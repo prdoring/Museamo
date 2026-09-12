@@ -1,0 +1,36 @@
+{
+  "name": "museamo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "npm run typecheck && vite build",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "overrides": { "xcode": { "uuid": "^11.1.1" } },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tailwindcss": "^4.0.0",
+    "typescript": "~5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^4.1.11"
+  }
+}

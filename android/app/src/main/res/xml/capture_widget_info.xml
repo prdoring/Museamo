@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp" android:minHeight="128dp" android:minResizeWidth="150dp" android:minResizeHeight="128dp"
+    android:targetCellWidth="3" android:targetCellHeight="2" android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="0" android:initialLayout="@layout/capture_widget" android:previewLayout="@layout/capture_widget"
+    android:configure="com.prdoring.museamo.WidgetConfigActivity" android:widgetFeatures="reconfigurable"
+    android:description="@string/widget_description" android:widgetCategory="home_screen" />

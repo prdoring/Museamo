@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="12dp" android:background="@drawable/widget_background">
+    <TextView android:id="@+id/widget_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/app_name" android:textColor="@color/widget_accent" android:textSize="12sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+    <LinearLayout android:id="@+id/widget_capture" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:contentDescription="@string/capture_thought">
+        <TextView android:id="@+id/widget_prompt" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="@string/thought_prompt" android:textColor="@color/widget_text" android:textSize="20sp" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:layout_width="40dp" android:layout_height="40dp" android:gravity="center" android:text="+" android:textColor="@color/widget_accent" android:textSize="28sp" android:importantForAccessibility="no" />
+    </LinearLayout>
+    <RelativeLayout android:id="@+id/widget_picker" android:layout_width="match_parent" android:layout_height="44dp" android:visibility="gone">
+        <TextView android:id="@+id/widget_picker_arrow" android:layout_width="28dp" android:layout_height="match_parent" android:layout_alignParentEnd="true" android:gravity="center" android:text="@string/picker_arrow" android:textColor="@color/widget_accent" android:textSize="18sp" android:importantForAccessibility="no" />
+        <TextView android:id="@+id/widget_picker_text" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_toStartOf="@id/widget_picker_arrow" android:gravity="center_vertical" android:text="@string/no_tag" android:textColor="@color/widget_accent" android:textSize="13sp" android:maxLines="1" android:ellipsize="end" />
+    </RelativeLayout>
+</LinearLayout>

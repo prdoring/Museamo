@@ -1,0 +1,23 @@
+# Architecture decisions
+
+## One native source of truth
+
+React 19 + TypeScript + Vite + Tailwind inside Capacitor 8 implement review. Kotlin owns Room/SQLite, the capture activity, widget configuration, tag picker, drafts, and Storage Access Framework backup. Native capture never starts a WebView. The bridge exposes typed queries/mutations, library/profile operations, native compose/configuration launch, backup pickers, and `dataChanged`. All mutations serialize on one repository executor and use Room transactions where multiple records change. Refresh on WebView resume reconciles notifications missed while the app was closed.
+
+Entries have UUIDs, plain text, creation/modification timestamps, star state, tag IDs, and optional capture-profile provenance. Tag IDs are stored as JSON arrays on entries/profiles/drafts; the repository transactionally enforces referential cleanup and validates assignments. Query pagination runs in SQL; tags are matched using quoted UUID tokens. Tags have unique normalized names. Schema exports are committed and destructive migration fallback is forbidden. Schema v1 is the initial baseline; future versions must provide explicit migrations and tests.
+
+Capture profiles have independent UUIDs; Android widget IDs are mappings, never portable identity. Copying a profile into a new widget creates an independent profile. Widget removal removes its binding and draft but retains its profile and all entries. Profiles remain editable/reusable in Settings. A fixed profile supports zero or more tags; a picker supports zero or one selected default. On opening a fresh composer, copy defaults into a durable draft with an entry UUID. Reuse that UUID when committing the draft, preventing duplicate saves. A saved draft's actual tags survive subsequent profile changes. Successful entry insertion and draft deletion occur atomically.
+
+## Bridge
+
+`src/data.ts` defines the app-facing contract. `queryEntries` accepts text, star/tag filters, offset and limit, returns entries and `hasMore`. `library` returns tags and profiles. Entry edits preserve identity/creation time/provenance. Delete is immediate; the UI retains the deleted record for Undo and repository restoration revalidates tag/profile references. Compose and widget configuration launch native activities. Backup import/export use native system document pickers rather than granting the WebView arbitrary file access.
+
+## Portable backups
+
+Version 1 JSON contains `format: "museamo"`, `version: 1`, `exportedAt`, `tags`, `profiles`, and `entries`. No drafts, Android widget IDs, or secrets. Export materializes a consistent transaction snapshot. Import validates the entire document before mutation and applies it transactionally. Unknown versions, malformed types, invalid IDs, dangling references, duplicate IDs/names, and unreasonable file sizes are rejected with an actionable message. Existing identical IDs/content are skipped. Conflicts are assigned fresh IDs and references are remapped; existing content is never silently replaced. Normalized tag names resolve to an existing tag to avoid indistinguishable duplicates. Same-ID renamed tags with distinct names are preserved separately. Profiles import without widget bindings. Entries reference remapped profile/tag IDs.
+
+## Future delivery — documented only
+
+Connection configuration: adapter type, credential reference, trigger (`manual` or `onCreate`), filter (`all` or `anyTag` with stable tag IDs), destination settings. All-entry filters match untagged entries; tag filters do not. Evaluate against final capture tags once on successful creation. One delivery per matching connection regardless of how many tags match. Manual sending bypasses automatic filters. No automatic historical backfill, star-triggered posting, or delivery on later tag/edit changes.
+
+Later, atomically insert entry and eligible outbox records. A native WorkManager dispatcher delivers immutable snapshots without React. Track pending/sent/failed/uncertain per destination, use stable attempt identities, and honor provider idempotency. An ambiguous non-idempotent timeout must not silently duplicate a public post. Explicit resend creates a new delivery; local edits/deletes never retract sent content by default. Keep backup, REST/webhook delivery, and social publication separate capabilities. Verify each provider's direct-device authentication; store credentials using Keystore-backed storage. Do not embed server secrets in an APK. Incoming webhooks and multi-device conflict resolution require separate designs.

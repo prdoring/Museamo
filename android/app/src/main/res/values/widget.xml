@@ -1,0 +1,7 @@
+<resources>
+    <item name="mode_fixed" type="id"/><item name="mode_picker" type="id"/>
+    <color name="widget_background">#FFFEFA</color><color name="widget_border">#E5E6DE</color><color name="widget_accent">#41684F</color><color name="widget_text">#2E3834</color><color name="widget_soft">#EAF0E6</color>
+    <string name="widget_description">A thought, a word, a little gem. Capture with fixed tags or a tag picker.</string>
+    <string name="capture_thought">Capture a thought</string><string name="thought_prompt">A thought…</string><string name="no_tag_picker">No tag ▾</string>
+    <string name="no_tag">No tag</string><string name="picker_arrow">▾</string>
+</resources>
