@@ -26,6 +26,9 @@ data class BindingRow(@PrimaryKey val widgetId: Int, val profileId: String)
 interface StoreDao {
     @Query("SELECT * FROM entries WHERE (:starred = 0 OR starred = 1) AND (:tag = '' OR instr(tagIds, :tag) > 0) AND (:search = '' OR instr(lower(text), lower(:search)) > 0) ORDER BY createdAt DESC, id DESC LIMIT :limit OFFSET :offset")
     fun query(search: String, starred: Boolean, tag: String, limit: Int, offset: Int): List<EntryRow>
+    @Query("SELECT * FROM entries WHERE (:starred = 0 OR starred = 1) AND (:tag = '' OR instr(tagIds, :tag) > 0) AND (:search = '' OR instr(lower(text), lower(:search)) > 0) AND (:beforeTime IS NULL OR createdAt < :beforeTime OR (createdAt = :beforeTime AND id < :beforeId)) ORDER BY createdAt DESC, id DESC LIMIT :limit")
+    fun page(search: String, starred: Boolean, tag: String, limit: Int, beforeTime: Long?, beforeId: String): List<EntryRow>
+    @Query("SELECT COUNT(*) FROM entries WHERE instr(tagIds, :quotedTag) > 0") fun tagCount(quotedTag: String): Int
     @Query("SELECT * FROM entries ORDER BY createdAt DESC, id DESC") fun entries(): List<EntryRow>
     @Query("SELECT * FROM entries WHERE id = :id") fun entry(id: String): EntryRow?
     @Insert(onConflict = OnConflictStrategy.IGNORE) fun insertEntry(row: EntryRow): Long
@@ -78,11 +81,17 @@ class Repository(val db: MuseamoDatabase) {
         return DraftRow(key, uid(), "", jsonIds(validTags(defaults)), profile?.id).also { dao.putDraft(it) }
     }
     fun saveDraft(row: DraftRow) { if (dao.entry(row.entryId) == null) dao.putDraft(row.copy(tagIds = jsonIds(validTags(ids(row.tagIds))))) }
+    fun inlineTags(text: String): List<String> = Hashtags.names(text).map { name -> (dao.tags().find { it.name.equals(name, true) } ?: saveTag(null, name)).id }
     fun commitDraft(row: DraftRow): EntryRow {
         require(row.text.isNotBlank()) { "Write a thought first." }
         var result: EntryRow? = null
         db.runInTransaction {
-            result = dao.entry(row.entryId) ?: EntryRow(row.entryId, row.text.trim(), System.currentTimeMillis(), System.currentTimeMillis(), tagIds = jsonIds(validTags(ids(row.tagIds))), profileId = row.profileId?.takeIf { dao.profile(it) != null }).also { dao.insertEntry(it) }
+            result = dao.entry(row.entryId) ?: run {
+                val hashtagIds = Hashtags.names(row.text).map { name ->
+                    dao.tags().find { it.name.equals(name, ignoreCase = true) } ?: saveTag(null, name)
+                }.map { it.id }
+                EntryRow(row.entryId, row.text, System.currentTimeMillis(), System.currentTimeMillis(), tagIds = jsonIds(validTags(ids(row.tagIds)) + hashtagIds), profileId = row.profileId?.takeIf { dao.profile(it) != null }).also { dao.insertEntry(it) }
+            }
             if (dao.draft(row.profileKey)?.entryId == row.entryId) dao.deleteDraft(row.profileKey)
         }
         return result!!
@@ -90,7 +99,7 @@ class Repository(val db: MuseamoDatabase) {
     fun edit(id: String, text: String, tags: List<String>) {
         require(text.isNotBlank()) { "A thought cannot be empty." }
         val old = requireNotNull(dao.entry(id)) { "This thought no longer exists." }
-        dao.updateEntry(old.copy(text = text.trim(), tagIds = jsonIds(validTags(tags)), updatedAt = System.currentTimeMillis()))
+        db.runInTransaction { dao.updateEntry(old.copy(text = text, tagIds = jsonIds(validTags(tags) + Hashtags.names(text).filter { name -> Hashtags.names(old.text).none { it.equals(name, true) } || ids(old.tagIds).any { dao.tag(it)?.name?.equals(name, true) == true } }.map { name -> (dao.tags().find { it.name.equals(name, true) } ?: saveTag(null, name)).id }), updatedAt = System.currentTimeMillis())) }
     }
     fun restore(row: EntryRow) {
         dao.insertEntry(row.copy(tagIds = jsonIds(validTags(ids(row.tagIds))), profileId = row.profileId?.takeIf { dao.profile(it) != null }))

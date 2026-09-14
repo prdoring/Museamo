@@ -1,0 +1,4 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+ <item><shape><solid android:color="@color/widget_background"/></shape></item>
+ <item><bitmap android:src="@drawable/ink_shading" android:tileMode="repeat"/></item>
+</layer-list>

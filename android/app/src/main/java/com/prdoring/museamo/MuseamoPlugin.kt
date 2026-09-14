@@ -24,15 +24,30 @@ class MuseamoPlugin : Plugin() {
             catch (e: Exception) { call.reject(e.message ?: "Operation failed. Please try again.", e) }
         }
     }
+    @PluginMethod fun copyFormatted(call: PluginCall) {
+        activity.runOnUiThread {
+            try {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newHtmlText("Thought", call.getString("text") ?: "", call.getString("html") ?: ""))
+                call.resolve()
+            } catch (e: Exception) { call.reject("Could not copy this thought.", e) }
+        }
+    }
+    @PluginMethod fun openExternal(call: PluginCall) {
+        val uri = android.net.Uri.parse(call.getString("url") ?: "")
+        if (uri.scheme?.lowercase(java.util.Locale.ROOT) !in listOf("http", "https") || uri.host.isNullOrBlank()) { call.reject("Only web links can be opened."); return }
+        activity.runOnUiThread { try { activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE)); call.resolve() } catch (e: Exception) { call.reject("No app could open this link.", e) } }
+    }
     @PluginMethod fun queryEntries(call: PluginCall) = task(call) { repo ->
         val limit = (call.getInt("limit") ?: 50).coerceIn(1, Int.MAX_VALUE - 1)
         val tag = call.getString("tagId")?.let { "\"$it\"" } ?: ""
-        val rows = repo.dao.query(call.getString("search") ?: "", call.getBoolean("starred") ?: false, tag, limit + 1, (call.getInt("offset") ?: 0).coerceAtLeast(0))
+        val rows = if (call.getLong("beforeTime") == null && call.getInt("offset") != null) repo.dao.query(call.getString("search") ?: "", call.getBoolean("starred") ?: false, tag, limit + 1, (call.getInt("offset") ?: 0).coerceAtLeast(0)) else repo.dao.page(call.getString("search") ?: "", call.getBoolean("starred") ?: false, tag, limit + 1, call.getLong("beforeTime"), call.getString("beforeId") ?: "")
         JSObject().put("entries", JSONArray(rows.take(limit).map { it.json() })).put("hasMore", rows.size > limit)
     }
-    @PluginMethod fun library(call: PluginCall) = task(call) { repo -> JSObject().put("tags", JSONArray(repo.dao.tags().map { it.json() })).put("profiles", JSONArray(repo.dao.profiles().map { it.json() })) }
+    @PluginMethod fun getEntry(call: PluginCall) = task(call) { repo -> JSObject().put("entry", repo.dao.entry(requireNotNull(call.getString("id")))?.json() ?: org.json.JSONObject.NULL) }
+    @PluginMethod fun library(call: PluginCall) = task(call) { repo -> JSObject().put("tags", JSONArray(repo.dao.tags().map { it.json().put("count", repo.dao.tagCount("\"${it.id}\"")) })).put("profiles", JSONArray(repo.dao.profiles().map { it.json() })) }
     @PluginMethod fun updateEntry(call: PluginCall) = task(call, true) { repo -> repo.edit(requireNotNull(call.getString("id")), requireNotNull(call.getString("text")), ids(requireNotNull(call.getArray("tagIds")).toString())); JSObject() }
-    @PluginMethod fun setStar(call: PluginCall) = task(call, true) { repo -> val row = requireNotNull(repo.dao.entry(requireNotNull(call.getString("id")))) { "This thought no longer exists." }; repo.dao.updateEntry(row.copy(starred = call.getBoolean("starred") ?: false, updatedAt = System.currentTimeMillis())); JSObject() }
+    @PluginMethod fun setStar(call: PluginCall) = task(call, true) { repo -> val row = requireNotNull(repo.dao.entry(requireNotNull(call.getString("id")))) { "This thought no longer exists." }; repo.dao.updateEntry(row.copy(starred = call.getBoolean("starred") ?: false)); activity.runOnUiThread { activity.window.decorView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) }; JSObject() }
     @PluginMethod fun deleteEntry(call: PluginCall) = task(call, true) { repo -> repo.dao.deleteEntry(requireNotNull(call.getString("id"))); JSObject() }
     @PluginMethod fun restoreEntry(call: PluginCall) = task(call, true) { repo -> repo.restore(Backup.entry(requireNotNull(call.getObject("entry")))); JSObject() }
     @PluginMethod fun saveTag(call: PluginCall) = task(call, true) { repo -> repo.saveTag(call.getString("id"), requireNotNull(call.getString("name"))); JSObject() }
@@ -49,7 +64,8 @@ class MuseamoPlugin : Plugin() {
         repo.saveDraft(draft.copy(text = requireNotNull(call.getString("text")), tagIds = requireNotNull(call.getArray("tagIds")).toString())); JSObject()
     }
     @PluginMethod fun discardDraft(call: PluginCall) = task(call) { repo -> repo.dao.deleteDraft(requireNotNull(call.getString("profileKey"))); JSObject() }
-    @PluginMethod fun compose(call: PluginCall) { activity.startActivity(Intent(context, CaptureActivity::class.java).putExtra("initialTag", call.getString("tagId"))); call.resolve() }
+    @PluginMethod fun compose(call: PluginCall) { startActivityForResult(call, Intent(context, CaptureActivity::class.java).putExtra("initialTag", call.getString("tagId")), "composeResult") }
+    @ActivityCallback private fun composeResult(call: PluginCall?, result: ActivityResult) { call?.resolve(JSObject().put("cancelled", result.resultCode != Activity.RESULT_OK).put("entryId", result.data?.getStringExtra("entryId"))) }
     @PluginMethod fun configureWidget(call: PluginCall) { activity.startActivity(Intent(context, WidgetConfigActivity::class.java).putExtra("profileId", call.getString("profileId"))); call.resolve() }
     @PluginMethod fun exportBackup(call: PluginCall) {
         val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())

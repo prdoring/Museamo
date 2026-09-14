@@ -1,116 +1,567 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowUpRight, Check, Download, Feather, Hash, MoreHorizontal, Plus, Search, Settings, Sparkles, Star, Trash2, Upload, X } from 'lucide-react';
-import { bridge, dayLabel, filterEntries, isNative, previewEntries, previewTags, type Entry, type Library, type Tag } from './data';
+import { PaperIcon } from "./components/PaperIcon";
+import { useEffect, useRef, useState } from "react";
+import {
+  MoreHorizontal,
+  Search,
+} from "lucide-react";
+import {
+  bridge,
+  isNative,
+  preview,
+  type Draft,
+  type Entry,
+  type Library,
+  type Tag,
+} from "./data";
+import { Editor, TagEditor } from "./components/Thoughts";
 
-type Tab = 'stream' | 'gems' | 'tags';
+import { Navigation, type Tab } from "./components/Navigation";
+import { Feed } from "./components/Feed";
+import { Settings } from "./components/Settings";
+import { SearchField, TagList } from "./components/LibraryViews";
+type View = { tab: Tab; tagId?: string; query: string; settings?: boolean };
 export default function App() {
-  const [tab, setTab] = useState<Tab>('stream');
-  const [query, setQuery] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string>();
-  const [entries, setEntries] = useState<Entry[]>(isNative ? [] : previewEntries);
-  const [library, setLibrary] = useState<Library>({ tags: isNative ? [] : previewTags, profiles: [] });
-  const [settings, setSettings] = useState(false);
-  const [editing, setEditing] = useState<Entry>();
-  const [tagEditor, setTagEditor] = useState<Tag | 'new'>();
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [deleted, setDeleted] = useState<Entry>();
-  const [hasMore, setHasMore] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const generation = useRef(0);
-  const pageSize = useRef(50);
-  const latestReload = useRef<() => Promise<void>>(async () => {});
-
-  async function reload() {
-    if (!isNative) return;
-    const current = ++generation.current;
-    try {
-      const [data, lib] = await Promise.all([bridge.queryEntries({ search: query, starred: tab === 'gems', tagId: selectedTag, limit: pageSize.current }), bridge.library()]);
-      if (current !== generation.current) return;
-      setEntries(data.entries); setHasMore(data.hasMore); setLibrary(lib);
-      if (selectedTag && !lib.tags.some(t => t.id === selectedTag)) setSelectedTag(undefined);
-    } catch (e) { setError(message(e)); }
+  const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system");
+  useEffect(() => {
+    if (isNative) return;
+    if (previewTheme === "system") delete document.documentElement.dataset.previewTheme;
+    else document.documentElement.dataset.previewTheme = previewTheme;
+    return () => { delete document.documentElement.dataset.previewTheme; };
+  }, [previewTheme]);
+  const [view, setView] = useState<View>({ tab: "stream", query: "" });
+  const [entries, setEntries] = useState<Entry[]>([]),
+    [library, setLibrary] = useState<Library>({ tags: [], profiles: [] });
+  const [search, setSearch] = useState(false),
+    [loading, setLoading] = useState(true),
+    [more, setMore] = useState(false),
+    [newThoughts, setNewThoughts] = useState(false);
+  const [editing, setEditing] = useState<Entry>(),
+    [draft, setDraft] = useState<Draft>(),
+    [tagEditor, setTagEditor] = useState<Tag | "new">();
+  const [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [deleted, setDeleted] = useState<Entry[]>([]),
+    [showStream, setShowStream] = useState(false);
+  const [retry, setRetry] = useState<() => void>();
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const version = useRef(0),
+    selfMutation = useRef(0),
+    composing = useRef(false),
+    pendingStars = useRef(new Set<string>()),
+    loadingMore = useRef(false);
+  const positions = useRef(new Map<string, number>()),
+    cache = useRef(new Map<string, { entries: Entry[]; more: boolean }>());
+  const key = (v: View) =>
+    `${v.settings ? "settings" : v.tab}/${v.tagId || ""}/${v.query}`;
+  const tag = library.tags.find((t) => t.id === view.tagId);
+  const modal = !!editing || !!draft || !!tagEditor;
+  async function refreshLibrary() {
+    setLibrary(await bridge.library());
   }
-  latestReload.current = reload;
-  useEffect(() => { pageSize.current = 50; void reload(); }, [query, tab, selectedTag]);
+  async function load(append = false, keepPosition = false) {
+    if (append && loadingMore.current) return;
+    if (append) loadingMore.current = true;
+    const request = ++version.current,
+      current = viewRef.current;
+    const last = append ? entriesRef.current.at(-1) : undefined;
+    if (!append && !keepPosition) setLoading(true);
+    try {
+      const [page, lib] = await Promise.all([
+        bridge.queryEntries({
+          starred: current.tab === "gems",
+          tagId: current.tagId,
+          search: current.query,
+          limit: 50,
+          beforeTime: last?.createdAt,
+          beforeId: last?.id,
+        }),
+        bridge.library(),
+      ]);
+      if (version.current !== request) return;
+      const next = append
+        ? [
+            ...entriesRef.current,
+            ...page.entries.filter(
+              (e) => !entriesRef.current.some((old) => old.id === e.id),
+            ),
+          ]
+        : page.entries;
+      setEntries(next);
+      setMore(page.hasMore);
+      setLibrary(lib);
+      setNewThoughts(false);
+      cache.current.set(key(current), { entries: next, more: page.hasMore });
+      if (current.tagId && !lib.tags.some((t) => t.id === current.tagId))
+        setView({ tab: "tags", query: "" });
+    } catch (e) {
+      failure(e, () => void load(append, keepPosition));
+    } finally {
+      loadingMore.current = false;
+      if (version.current === request) setLoading(false);
+    }
+  }
+  function failure(e: unknown, action?: () => void) {
+    setError(e instanceof Error ? e.message : String(e));
+    setRetry(() => action);
+  }
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    ++version.current;
+    const existing = cache.current.get(key(view));
+    if (existing) {
+      setEntries(existing.entries);
+      setMore(existing.more);
+      setLoading(false);
+    } else {
+      setEntries([]);
+      void load();
+    }
+    requestAnimationFrame(() =>
+      window.scrollTo(0, positions.current.get(key(view)) || 0),
+    );
+  }, [view.tab, view.tagId, view.query, view.settings]);
   useEffect(() => {
     let disposed = false;
-    let remove: (() => void) | undefined;
-    if (isNative) bridge.addListener('dataChanged', () => void latestReload.current()).then(h => { if (disposed) void h.remove(); else remove = () => void h.remove(); }).catch(e => setError(message(e)));
-    const resume = () => { if (document.visibilityState === 'visible') void latestReload.current(); };
-    document.addEventListener('visibilitychange', resume);
-    return () => { disposed = true; remove?.(); document.removeEventListener('visibilitychange', resume); };
-  }, []);
-  useEffect(() => { if (!notice) return; const id = setTimeout(() => setNotice(''), 4000); return () => clearTimeout(id); }, [notice]);
-  useEffect(() => {
-    if (!editing && !tagEditor) return;
-    const previous = document.activeElement as HTMLElement | null;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) { setEditing(undefined); setTagEditor(undefined); }
-      if (event.key !== 'Tab') return;
-      const controls = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] input, [role="dialog"] textarea'));
-      const first = controls[0], last = controls.at(-1);
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    let remove: (() => Promise<void>) | undefined;
+    function changed() {
+      if (selfMutation.current || composing.current) return;
+      cache.current.clear();
+      if (window.scrollY > 120) {
+        setNewThoughts(true);
+        void refreshLibrary();
+      } else void loadRef.current(false, true);
+    }
+    void bridge.addListener("dataChanged", changed).then((handle) => {
+      if (disposed) void handle.remove();
+      else remove = handle.remove;
+    });
+    const resume = () => {
+      if (document.visibilityState === "visible") changed();
     };
-    document.addEventListener('keydown', onKey);
-    const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = overflow; previous?.focus(); };
-  }, [!!editing, !!tagEditor, busy]);
-
-  async function run(action: () => Promise<unknown>, success?: string): Promise<boolean> {
-    if (!isNative) { setNotice('Design preview — install the Android app to save thoughts.'); return false; }
-    setBusy(true); setError('');
-    try { await action(); await reload(); if (success) setNotice(success); return true; }
-    catch (e) { setError(message(e)); return false; }
-    finally { setBusy(false); }
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      disposed = true;
+      void remove?.();
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, []);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const resize = () => {
+      document.documentElement.style.setProperty(
+        "--viewport-height",
+        `${viewport?.height || window.innerHeight}px`,
+      );
+      document.documentElement.style.setProperty(
+        "--viewport-top",
+        `${viewport?.offsetTop || 0}px`,
+      );
+    };
+    resize();
+    viewport?.addEventListener("resize", resize);
+    viewport?.addEventListener("scroll", resize);
+    return () => {
+      viewport?.removeEventListener("resize", resize);
+      viewport?.removeEventListener("scroll", resize);
+    };
+  }, []);
+  function navigate(next: View) {
+    positions.current.set(key(view), window.scrollY);
+    cache.current.set(key(view), { entries, more });
+    setView(next);
+    setSearch(!!next.query);
+    setError("");
+    setNewThoughts(false);
   }
-  function navigate(next: Tab) { setTab(next); setSelectedTag(undefined); setQuery(''); setSettings(false); }
-  const shown = isNative ? entries : filterEntries(entries, { search: query, starred: tab === 'gems', tagId: selectedTag });
-  const tagName = library.tags.find(t => t.id === selectedTag)?.name;
-  const title = settings ? 'Your space' : tagName || (tab === 'gems' ? 'The keepers.' : tab === 'tags' ? 'A little order.' : 'Let it wander.');
-
-  return <div className="app-shell">
-    {!isNative && <div className="preview-banner">Browser preview · example thoughts · nothing is stored</div>}
-    <header inert={!!editing || !!tagEditor}><a className="brand" href="#" onClick={e => { e.preventDefault(); navigate('stream'); }}><span className="brand-mark"><Feather size={19}/></span> museamo<span className="brand-dot">.</span></a><button className="icon-button" aria-label={settings ? 'Close settings' : 'Settings'} onClick={() => setSettings(!settings)}>{settings ? <X/> : <Settings size={21}/>}</button></header>
-    <main inert={!!editing || !!tagEditor}>
-      <div className="eyebrow">{settings ? 'MAKE YOURSELF AT HOME' : tagName ? 'YOUR COLLECTION' : tab === 'gems' ? 'WORTH COMING BACK TO' : tab === 'tags' ? 'FOLLOW A THREAD' : 'A PLACE FOR PASSING THOUGHTS'}</div>
-      <div className="title-row">{selectedTag && <button className="icon-button" aria-label="Back to tags" onClick={() => setSelectedTag(undefined)}><ArrowLeft/></button>}<h1>{title}</h1></div>
-      <p className="subtitle">{settings ? 'On your phone. On your terms.' : tagName ? 'Different moments. A common thread.' : tab === 'gems' ? 'The ones you wanted to hold onto.' : tab === 'tags' ? 'Make room for all the things you notice.' : 'Big ideas, odd words, tiny observations. All welcome.'}</p>
-      {error && <div className="error" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss error"><X size={18}/></button></div>}
-      {settings ? <section className="settings-stack">
-        <div className="settings-card"><div className="section-heading"><h2>Homescreen widgets</h2><span className="pill">YOUR SHORTCUTS</span></div><p>Add a Museamo widget from your launcher’s widget menu. Each one can have its own tags, or a tag picker.</p>
-          {library.profiles.map(p => <button className="profile-row" key={p.id} onClick={() => void run(() => bridge.configureWidget({ profileId: p.id }))}><span><strong>{p.label}</strong><small>{p.mode === 'picker' ? 'Tag picker' : p.tagIds.map(id => library.tags.find(t => t.id === id)?.name).filter(Boolean).join(', ') || 'No tag'}</small></span><ArrowUpRight size={20}/></button>)}
-          {!library.profiles.length && <p className="muted">Your configured widgets will appear here.</p>}
-        </div>
-        <div className="settings-card"><h2>A copy to keep</h2><p>Export your thoughts, gems, tags, and widget profiles to a JSON file. Imports preserve conflicting content as a separate copy.</p><div className="button-row"><button disabled={busy} className="secondary" onClick={() => void run(async () => { const r = await bridge.exportBackup(); if (!r.cancelled) setNotice('Backup exported.'); })}><Download size={17}/> Export</button><button disabled={busy} className="secondary" onClick={() => void run(async () => { const r = await bridge.importBackup(); if (!r.cancelled) setNotice('Backup imported.'); })}><Upload size={17}/> Import</button></div></div>
-        <div className="privacy-note"><span className="status-dot"/>Stored on this device. No account. No background uploads.<p>Keep an export somewhere safe: uninstalling the app removes its local data.</p></div>
-      </section> : <>
-        <label className="search-box"><Search size={19}/><input aria-label={tab === 'tags' && !selectedTag ? 'Search tags' : 'Search thoughts'} placeholder={tab === 'tags' && !selectedTag ? 'Find a tag…' : 'Find a thought…'} value={query} onChange={e => setQuery(e.target.value)}/>{query && <button aria-label="Clear search" onClick={() => setQuery('')}><X size={17}/></button>}</label>
-        {tab === 'tags' && !selectedTag ? <section className="tag-grid">
-          {library.tags.filter(t => t.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(t => <div className="tag-card" key={t.id}><button className="tag-open" onClick={() => { setSelectedTag(t.id); setQuery(''); }}><Hash size={23}/><strong>{t.name}</strong><ArrowUpRight size={18}/></button><button className="icon-button" aria-label={`Edit tag ${t.name}`} onClick={() => setTagEditor(t)}><MoreHorizontal size={18}/></button></div>)}
-          <button className="new-tag" onClick={() => setTagEditor('new')}><Plus size={20}/> New tag</button>
-        </section> : <section className="stream" aria-label="Thoughts">
-          {!shown.length && <div className="empty-state"><Feather size={32}/><h2>{tab === 'gems' ? 'A gem will find its way here.' : query ? 'Nothing here just yet.' : 'What crossed your mind?'}</h2><p>{tab === 'gems' ? 'Star a thought in your stream to keep it close.' : query ? 'Try a different word or phrase.' : 'Capture your first thought. It can be anything.'}</p></div>}
-          {shown.map((entry, i) => <div key={entry.id}>{(i === 0 || dayLabel(shown[i-1].createdAt) !== dayLabel(entry.createdAt)) && <div className="day-divider"><span>{dayLabel(entry.createdAt)}</span><div/></div>}<article className="thought-card">
-            <div className="thought-meta"><time dateTime={new Date(entry.createdAt).toISOString()}>{new Date(entry.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time><button className={`icon-button star-button ${entry.starred ? 'is-starred' : ''}`} aria-label={entry.starred ? 'Remove from gems' : 'Save to gems'} aria-pressed={entry.starred} disabled={busy} onClick={() => void run(() => bridge.setStar({ id: entry.id, starred: !entry.starred }))}><Star size={20} fill={entry.starred ? 'currentColor' : 'none'}/></button></div>
-            <button className="thought-body" onClick={() => setEditing(entry)}>{entry.text}</button>
-            <div className="thought-footer"><div className="chips">{entry.tagIds.map(id => library.tags.find(t => t.id === id)).filter((t): t is Tag => !!t).map(t => <button key={t.id} className="chip" onClick={() => { setTab('tags'); setSelectedTag(t.id); setQuery(''); }}># {t.name}</button>)}</div><button className="icon-button" aria-label="Edit thought" onClick={() => setEditing(entry)}><MoreHorizontal size={18}/></button></div>
-          </article></div>)}
-          {hasMore && <button className="secondary load-more" onClick={() => { pageSize.current += 50; void reload(); }}>More thoughts</button>}
-        </section>}
-      </>}
-      {!settings && <button className="compose-button" aria-label="Capture a thought" onClick={() => void run(() => bridge.compose({ tagId: selectedTag }))}><Plus size={23}/><span>A thought</span></button>}
-    </main>
-    <nav aria-label="Main navigation" inert={!!editing || !!tagEditor}><button aria-current={!settings && tab === 'stream' ? 'page' : undefined} onClick={() => navigate('stream')}><Feather size={21}/>Stream</button><button aria-current={!settings && tab === 'gems' ? 'page' : undefined} onClick={() => navigate('gems')}><Sparkles size={21}/>Gems</button><button aria-current={!settings && tab === 'tags' ? 'page' : undefined} onClick={() => navigate('tags')}><Hash size={21}/>Tags</button></nav>
-    {(notice || deleted) && <div className="toast" role="status"><span>{notice || 'Thought deleted'}</span>{deleted && <button disabled={busy} onClick={() => void run(() => bridge.restoreEntry({ entry: deleted }), 'Thought restored.').then(ok => { if (ok) setDeleted(undefined); })}>Undo</button>}<button aria-label="Dismiss notification" onClick={() => { setNotice(''); setDeleted(undefined); }}><X size={16}/></button></div>}
-    {editing && <div className="modal-backdrop"><section className="editor" role="dialog" aria-modal="true" aria-labelledby="edit-title"><div className="section-heading"><h2 id="edit-title">A thought, kept.</h2><button className="icon-button" aria-label="Close editor" onClick={() => setEditing(undefined)}><X/></button></div><div>{error && <p className="error" role="alert">{error}</p>}</div><textarea autoFocus aria-label="Thought text" value={editing.text} onChange={e => setEditing({ ...editing, text: e.target.value })}/><div className="tag-options">{library.tags.map(t => <button className={`chip ${editing.tagIds.includes(t.id) ? 'selected' : ''}`} key={t.id} aria-pressed={editing.tagIds.includes(t.id)} onClick={() => setEditing({ ...editing, tagIds: editing.tagIds.includes(t.id) ? editing.tagIds.filter(id => id !== t.id) : [...editing.tagIds, t.id] })}>{editing.tagIds.includes(t.id) && <Check size={13}/>}# {t.name}</button>)}</div><div className="editor-actions"><button className="danger secondary" disabled={busy} onClick={() => { const e = editing; void run(() => bridge.deleteEntry({ id: e.id })).then(ok => { if (ok) { setDeleted(e); setEditing(undefined); } }); }}><Trash2 size={17}/>Delete</button><button className="primary" disabled={busy || !editing.text.trim()} onClick={() => void run(() => bridge.updateEntry({ id: editing.id, text: editing.text, tagIds: editing.tagIds })).then(ok => { if (ok) setEditing(undefined); })}>Save changes</button></div></section></div>}
-    {tagEditor && <TagEditor tag={tagEditor} busy={busy} error={error} close={() => setTagEditor(undefined)} save={async name => { if (await run(() => bridge.saveTag({ id: tagEditor === 'new' ? undefined : tagEditor.id, name }))) setTagEditor(undefined); }} remove={async () => { if (tagEditor !== 'new' && await run(() => bridge.deleteTag({ id: tagEditor.id }))) setTagEditor(undefined); }}/ >}
-  </div>;
-}
-function message(e: unknown) { return e instanceof Error ? e.message : 'Something went wrong. Your saved thoughts are still on this device.'; }
-function TagEditor({ tag, busy, error, close, save, remove }: { tag: Tag | 'new'; busy: boolean; error: string; close: () => void; save: (name: string) => Promise<void>; remove: () => Promise<void> }) {
-  const [name, setName] = useState(tag === 'new' ? '' : tag.name);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  return <div className="modal-backdrop"><section className="editor small" role="dialog" aria-modal="true" aria-labelledby="tag-title"><div className="section-heading"><h2 id="tag-title">{tag === 'new' ? 'Give it a tag.' : 'Edit tag'}</h2><button className="icon-button" aria-label="Close tag editor" onClick={close}><X/></button></div>{error && <p className="error" role="alert">{error}</p>}<label>Tag name<input className="text-input" autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={80}/></label>{confirmDelete && <p className="error">Remove this tag from all thoughts, drafts, and widget defaults? Your thoughts will remain. Picker widgets using it will switch to No tag.</p>}<div className="editor-actions">{tag !== 'new' && <button className="secondary danger" disabled={busy} onClick={() => confirmDelete ? void remove() : setConfirmDelete(true)}>{confirmDelete ? 'Confirm removal' : 'Delete tag'}</button>}<button className="primary" disabled={busy || !name.trim()} onClick={() => void save(name.trim())}>Save tag</button></div></section></div>;
+  useEffect(() => {
+    const back = (event: Event) => {
+      if (document.querySelector('[role="dialog"]')) return;
+      if (search) {
+        event.preventDefault();
+        setSearch(false);
+        setView((v) => ({ ...v, query: "" }));
+      } else if (view.settings || view.tagId || view.tab !== "stream") {
+        event.preventDefault();
+        navigate({ tab: view.tagId ? "tags" : "stream", query: "" });
+      }
+    };
+    window.addEventListener("museamoBack", back);
+    return () => window.removeEventListener("museamoBack", back);
+  }, [view, search]);
+  function openTag(id: string) {
+    navigate({ tab: "tags", tagId: id, query: "" });
+  }
+  async function mutate(action: () => Promise<unknown>, after?: () => void) {
+    selfMutation.current++;
+    setError("");
+    try {
+      await action();
+      cache.current.clear();
+      await refreshLibrary();
+      after?.();
+    } catch (e) {
+      failure(e, () => void mutate(action, after));
+      throw e;
+    } finally {
+      selfMutation.current--;
+    }
+  }
+  async function star(entry: Entry) {
+    if (pendingStars.current.has(entry.id)) return;
+    pendingStars.current.add(entry.id);
+    setEntries((old) =>
+      old.map((e) => (e.id === entry.id ? { ...e, starred: !e.starred } : e)),
+    );
+    try {
+      await mutate(
+        () => bridge.setStar({ id: entry.id, starred: !entry.starred }),
+        () => {
+          if (view.tab === "gems" && entry.starred)
+            setEntries((old) => old.filter((e) => e.id !== entry.id));
+        },
+      );
+    } catch {
+      setEntries((old) => old.map((e) => (e.id === entry.id ? entry : e)));
+      setRetry(() => () => void star(entry));
+    } finally {
+      pendingStars.current.delete(entry.id);
+    }
+  }
+  async function remove(entry: Entry) {
+    try {
+      await mutate(
+        () => bridge.deleteEntry({ id: entry.id }),
+        () => {
+          setEntries((old) => old.filter((e) => e.id !== entry.id));
+          setDeleted((old) => [...old, entry]);
+        },
+      );
+    } catch {
+      /* visible retry */
+    }
+  }
+  async function saved(id?: string) {
+    cache.current.clear();
+    const entry = id ? (await bridge.getEntry({ id })).entry : null;
+    const matches =
+      entry &&
+      (!viewRef.current.tagId ||
+        entry.tagIds.includes(viewRef.current.tagId)) &&
+      (viewRef.current.tab !== "gems" || entry.starred) &&
+      (!viewRef.current.query ||
+        entry.text.toLowerCase().includes(viewRef.current.query.toLowerCase()));
+    if (matches) {
+      window.scrollTo(0, 0);
+      await load();
+    } else {
+      setNotice("Thought saved.");
+      setShowStream(true);
+      await refreshLibrary();
+    }
+  }
+  async function compose() {
+    if (composing.current) return;
+    composing.current = true;
+    try {
+      if (isNative) {
+        const result = await bridge.compose({ tagId: view.tagId });
+        if (!result.cancelled) await saved(result.entryId);
+      } else setDraft((await bridge.getDraft({ tagId: view.tagId })).draft);
+    } catch (e) {
+      failure(e, () => void compose());
+    } finally {
+      composing.current = false;
+    }
+  }
+  return (
+    <div className="app-shell">
+      <div inert={modal}>
+        {!isNative && (
+          <div className="preview-strip">
+            <span>Preview · resets on refresh</span>
+            <button onClick={() => setPreviewTheme(previewTheme === "system" ? "light" : previewTheme === "light" ? "dark" : "system")} aria-label="Change preview theme">Theme: {previewTheme}</button>
+            <button
+              onClick={() => {
+                cache.current.clear();
+                preview.reset();
+                void load();
+              }}
+            >
+              Reset examples
+            </button>
+          </div>
+        )}
+        <header className="toolbar">
+          <div className="toolbar-title">
+            {(view.tagId || view.settings) && (
+              <button
+                className="icon-button"
+                aria-label="Back"
+                onClick={() =>
+                  navigate({ tab: view.tagId ? "tags" : view.tab, query: "" })
+                }
+              >
+                <PaperIcon name="back" size={21} />
+              </button>
+            )}
+            {view.settings && <PaperIcon name="gear" size={22} />}
+            <h1 className={tag ? "dynamic-title" : undefined}>
+              {view.settings
+                ? "Settings"
+                : tag
+                  ? tag.name
+                  : view.tab === "gems"
+                    ? "Gems"
+                    : view.tab === "tags"
+                      ? "Tags"
+                      : "museamo"}
+            </h1>
+          </div>
+          <div className="toolbar-actions">
+            {tag && (
+              <button
+                className="icon-button"
+                aria-label="Edit this tag"
+                onClick={() => setTagEditor(tag)}
+              >
+                <MoreHorizontal size={21} />
+              </button>
+            )}
+            {!view.settings && (
+              <button
+                className="icon-button"
+                aria-label="Search"
+                aria-expanded={search}
+                onClick={() => {
+                  setSearch(!search);
+                  if (search && view.query) navigate({ ...view, query: "" });
+                }}
+              >
+                <Search size={21} />
+              </button>
+            )}
+            <button
+              className="icon-button"
+              aria-label={view.settings ? "Close settings" : "Settings"}
+              onClick={() =>
+                navigate({ tab: view.tab, query: "", settings: !view.settings })
+              }
+            >
+              {view.settings ? <PaperIcon name="close" size={21} /> : <PaperIcon name="gear" size={21} />}
+            </button>
+          </div>
+        </header>
+        <main>
+          {search && !view.settings && (
+            <SearchField
+              tags={view.tab === "tags" && !tag}
+              query={view.query}
+              change={(query) => setView({ ...view, query })}
+            />
+          )}
+          {error && (
+            <div className="error" role="alert">
+              {error}
+              <div>
+                {retry && <button onClick={retry}>Retry</button>}
+                <button onClick={() => setError("")}>Dismiss</button>
+              </div>
+            </div>
+          )}
+          {view.settings ? (
+            <Settings
+              library={library}
+              report={setNotice}
+              run={async (fn) => {
+                try {
+                  await mutate(fn);
+                } catch {
+                  /* visible */
+                }
+              }}
+              refresh={() => {
+                cache.current.clear();
+                void load();
+              }}
+            />
+          ) : view.tab === "tags" && !view.tagId ? (
+            <TagList
+              tags={library.tags}
+              query={view.query}
+              open={openTag}
+              edit={setTagEditor}
+            />
+          ) : (
+            <Feed
+              entries={entries}
+              tags={library.tags}
+              loading={loading}
+              more={more}
+              newThoughts={newThoughts}
+              query={view.query}
+              gems={view.tab === "gems"}
+              reload={() => {
+                window.scrollTo(0, 0);
+                void load();
+              }}
+              older={() => void load(true)}
+              star={(e) => void star(e)}
+              edit={setEditing}
+              remove={(e) => void remove(e)}
+              openTag={openTag}
+              report={setNotice}
+            />
+          )}
+        </main>
+        <Navigation
+          tab={view.tab}
+          settings={view.settings}
+          tagName={tag?.name}
+          compose={() => void compose()}
+          navigate={(tab) => navigate({ tab, query: "" })}
+        />
+        {(notice || deleted.length > 0 || showStream) && (
+          <aside className="notifications" aria-label="Notifications">
+            {(notice || showStream) && (
+              <div className="toast" role="status">
+                <span>{notice || "Thought saved."}</span>
+                {showStream && (
+                  <button
+                    onClick={() => {
+                      setShowStream(false);
+                      cache.current.clear();
+                      positions.current.set("stream//", 0);
+                      const next: View = { tab: "stream", query: "" };
+                      viewRef.current = next;
+                      setView(next);
+                      window.scrollTo(0, 0);
+                      void loadRef.current();
+                    }}
+                  >
+                    View in Stream
+                  </button>
+                )}
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss notification"
+                  onClick={() => {
+                    setNotice("");
+                    setShowStream(false);
+                  }}
+                >
+                  <PaperIcon name="close" size={17} />
+                </button>
+              </div>
+            )}
+            {deleted.map((e) => (
+              <div className="toast" key={e.id} role="status">
+                <span>
+                  Deleted: {e.text.slice(0, 28)}
+                  {e.text.length > 28 ? "…" : ""}
+                </span>
+                <button
+                  onClick={() =>
+                    void mutate(
+                      () => bridge.restoreEntry({ entry: e }),
+                      () => {
+                        setDeleted((old) => old.filter((d) => d.id !== e.id));
+                        void load(false, true);
+                      },
+                    ).catch(() => {})
+                  }
+                >
+                  Undo
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss deletion"
+                  onClick={() =>
+                    setDeleted((old) => old.filter((d) => d.id !== e.id))
+                  }
+                >
+                  <PaperIcon name="close" size={17} />
+                </button>
+              </div>
+            ))}
+          </aside>
+        )}
+      </div>
+      {editing && (
+        <Editor
+          key={editing.id}
+          initial={editing}
+          tags={library.tags}
+          refreshTags={refreshLibrary}
+          close={() => setEditing(undefined)}
+          save={async (text, tagIds) => {
+            const entry = editing;
+            await mutate(() =>
+              bridge.updateEntry({ id: entry.id, text, tagIds }),
+            );
+            const updated = (await bridge.getEntry({ id: entry.id })).entry;
+            setEntries((old) =>
+              old.flatMap((e) =>
+                e.id !== entry.id
+                  ? [e]
+                  : updated &&
+                      (!view.tagId || updated.tagIds.includes(view.tagId)) &&
+                      (!view.query ||
+                        updated.text
+                          .toLowerCase()
+                          .includes(view.query.toLowerCase()))
+                    ? [updated]
+                    : [],
+              ),
+            );
+            setEditing(undefined);
+          }}
+        />
+      )}
+      {draft && (
+        <Editor
+          key={draft.entryId}
+          capture
+          initial={draft}
+          tags={library.tags}
+          refreshTags={refreshLibrary}
+          close={() => setDraft(undefined)}
+          discard={() => bridge.discardDraft({ profileKey: draft.profileKey })}
+          change={(text, tagIds) => {
+            const next = { ...draft, text, tagIds };
+            setDraft(next);
+            void bridge.updateDraft(next).catch(failure);
+          }}
+          save={async (text, tagIds) => {
+            selfMutation.current++;
+            try {
+              const id = preview.save({ ...draft, text, tagIds });
+              setDraft(undefined);
+              await saved(id);
+            } finally {
+              selfMutation.current--;
+            }
+          }}
+        />
+      )}
+      {tagEditor && (
+        <TagEditor
+          tag={tagEditor}
+          close={() => setTagEditor(undefined)}
+          done={async () => {
+            cache.current.clear();
+            await load(false, true);
+          }}
+        />
+      )}
+    </div>
+  );
 }

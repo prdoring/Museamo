@@ -28,7 +28,7 @@
 
         <activity android:name=".CaptureActivity" android:theme="@style/CaptureTheme" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
         <activity android:name=".TagPickerActivity" android:theme="@style/CaptureTheme" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" />
-        <activity android:name=".WidgetConfigActivity" android:theme="@style/CaptureTheme" android:exported="true" android:excludeFromRecents="true">
+        <activity android:name=".WidgetConfigActivity" android:theme="@style/WidgetConfigTheme" android:exported="true">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
         </activity>
         <receiver android:name=".CaptureWidget" android:exported="false">
@@ -49,3 +49,4 @@
     <!-- Permissions -->
 
 </manifest>
+

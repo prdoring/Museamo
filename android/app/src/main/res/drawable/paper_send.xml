@@ -1,0 +1,3 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="22dp" android:height="22dp" android:viewportWidth="96" android:viewportHeight="96">
+<group android:rotation="-90" android:pivotX="48" android:pivotY="48">
+<path android:fillColor="@color/widget_text" android:pathData="M8 42h48V23l32 25-32 25V54H8z"/></group></vector>

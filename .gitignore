@@ -20,3 +20,4 @@ museamo-*.json
 artifacts/
 test-results/
 .tools/
+android/.kotlin/

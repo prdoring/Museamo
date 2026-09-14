@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="wpa-pictograms-projects-star-title wpa-pictograms-projects-star-desc">
+  <title id="wpa-pictograms-projects-star-title">Projects star pictogram</title>
+  <desc id="wpa-pictograms-projects-star-desc">Bold five-point star used for the projects navigation item.</desc>
+  <style>
+  :root {
+    --wpa-navy: var(--navy, #12303a);
+    --wpa-cream: var(--paper, #e7d6ad);
+    --wpa-cream-text: var(--cream, #f4e7c7);
+    --wpa-brick: var(--brick, #a9412b);
+    --wpa-ochre: var(--ochre, #d3922e);
+    --wpa-forest: var(--forest, #36543b);
+    --wpa-dusty-teal: var(--teal, #557b78);
+    --wpa-charcoal: var(--charcoal, #262a27);
+  }
+  .ink { fill: var(--wpa-ink, var(--wpa-navy)); }
+  .paper { fill: var(--wpa-paper, var(--wpa-cream)); }
+  .accent { fill: var(--wpa-accent, var(--wpa-brick)); }
+  .highlight { fill: var(--wpa-highlight, var(--wpa-ochre)); }
+  .secondary { fill: var(--wpa-secondary, var(--wpa-forest)); }
+  .teal { fill: var(--wpa-dusty-teal, #557b78); }
+  .charcoal { fill: var(--wpa-charcoal, #262a27); }
+  .ink-stroke {
+    fill: none;
+    stroke: var(--wpa-ink, var(--wpa-navy));
+    stroke-width: 6;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    vector-effect: non-scaling-stroke;
+  }
+  </style>
+
+  <g data-part="pictogram">    <path class="ink" d="m48 7 11 25 27 3-20 18 6 27-24-14-24 14 6-27-20-18 27-3z"/>
+    <circle class="accent" cx="48" cy="46" r="6"/></g>
+</svg>

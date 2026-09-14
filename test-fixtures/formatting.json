@@ -1,0 +1,62 @@
+[
+  {
+    "name": "dictionary",
+    "html": "<h2>serendipity</h2><p><i>noun</i></p><p>Finding <strong>good things</strong> by chance.</p>",
+    "markdown": "**serendipity**\n\n_noun_\n\nFinding **good things** by chance."
+  },
+  {
+    "name": "bullets",
+    "html": "<ul><li>First idea</li><li>Second idea</li></ul>",
+    "markdown": "-   First idea\n-   Second idea"
+  },
+  {
+    "name": "numbered",
+    "html": "<ol start=3><li>Three</li><li>Four</li></ol>",
+    "markdown": "3.  Three\n4.  Four"
+  },
+  {
+    "name": "quote",
+    "html": "<blockquote><p>Keep noticing.</p></blockquote>",
+    "markdown": "> Keep noticing."
+  },
+  {
+    "name": "link",
+    "html": "<p>Read <a href=\"https://example.com/word\">the definition</a>.</p>",
+    "markdown": "Read [the definition](<https://example.com/word>)."
+  },
+  {
+    "name": "unsafe content",
+    "html": "<script>alert(1)</script><style>p{color:red}</style><p><a href=\"javascript:alert(1)\">Words</a><img src=\"https://example.com/track\"></p>",
+    "markdown": "Words"
+  },
+  {
+    "name": "own typography",
+    "html": "<p style=\"font-size:70px;color:red\"><span style=\"font-weight:700;font-family:serif\">Warm</span> <span style=\"font-style:italic\">words</span></p>",
+    "markdown": "**Warm** _words_"
+  },
+  {
+    "name": "unicode",
+    "html": "<p>🌱 <strong>日本語</strong> &amp; café</p>",
+    "markdown": "🌱 **日本語** & café"
+  },
+  {
+    "name": "definition list",
+    "html": "<dl><dt>muse</dt><dd>A source of inspiration.</dd></dl>",
+    "markdown": "**muse**\n\nA source of inspiration."
+  },
+  {
+    "name": "emphasis spacing",
+    "html": "<p><b>Good </b>words <i> last </i>forever.</p>",
+    "markdown": "**Good** words _last_ forever."
+  },
+  {
+    "name": "pretty printed list",
+    "html": "<ul>\n  <li>First</li>\n  <li>Second</li>\n</ul>",
+    "markdown": "-   First\n-   Second"
+  },
+  {
+    "name": "nested list",
+    "html": "<ul><li>Word<ul><li>Meaning</li></ul></li><li>Another</li></ul>",
+    "markdown": "-   Word\n    -   Meaning\n-   Another"
+  }
+]

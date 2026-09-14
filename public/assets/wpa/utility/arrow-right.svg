@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="wpa-utility-arrow-right-title wpa-utility-arrow-right-desc">
+  <title id="wpa-utility-arrow-right-title">Arrow right glyph</title>
+  <desc id="wpa-utility-arrow-right-desc">Bold right arrow for links and project reveals.</desc>
+  <style>
+  :root {
+    --wpa-navy: var(--navy, #12303a);
+    --wpa-cream: var(--paper, #e7d6ad);
+    --wpa-cream-text: var(--cream, #f4e7c7);
+    --wpa-brick: var(--brick, #a9412b);
+    --wpa-ochre: var(--ochre, #d3922e);
+    --wpa-forest: var(--forest, #36543b);
+    --wpa-dusty-teal: var(--teal, #557b78);
+    --wpa-charcoal: var(--charcoal, #262a27);
+  }
+  .ink { fill: var(--wpa-ink, var(--wpa-navy)); }
+  .paper { fill: var(--wpa-paper, var(--wpa-cream)); }
+  .accent { fill: var(--wpa-accent, var(--wpa-brick)); }
+  .highlight { fill: var(--wpa-highlight, var(--wpa-ochre)); }
+  .secondary { fill: var(--wpa-secondary, var(--wpa-forest)); }
+  .teal { fill: var(--wpa-dusty-teal, #557b78); }
+  .charcoal { fill: var(--wpa-charcoal, #262a27); }
+  .ink-stroke {
+    fill: none;
+    stroke: var(--wpa-ink, var(--wpa-navy));
+    stroke-width: 6;
+    stroke-linecap: square;
+    stroke-linejoin: miter;
+    vector-effect: non-scaling-stroke;
+  }
+  </style>
+
+  <g data-part="pictogram">    <path class="ink" d="M8 42h48V23l32 25-32 25V54H8z"/></g>
+</svg>

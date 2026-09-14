@@ -43,6 +43,17 @@ class RepositoryTest {
         try { repo.commitDraft(draft); fail("Expected blank validation") } catch (_: IllegalArgumentException) {}
         assertNotNull(repo.dao.draft("general")); assertEquals(0, repo.dao.entries().size)
     }
+    @Test fun sendingHashtagsReusesExistingTagsAndCreatesNewOnesOnce() {
+        val existing = repo.saveTag(null, "Words")
+        val draft = repo.draft("hashtags", null, null).copy(text = "A thought #words #fresh #FRESH", tagIds = jsonIds(listOf(existing.id)))
+        val entry = repo.commitDraft(draft)
+        repo.commitDraft(draft)
+        assertEquals(2, repo.dao.tags().size)
+        assertEquals(2, ids(entry.tagIds).size)
+        assertTrue(existing.id in ids(entry.tagIds))
+        assertEquals(draft.text, entry.text)
+        assertNull(repo.dao.draft("hashtags"))
+    }
     @Test fun tagDeletionCleansEntriesProfilesDraftsAndPickerWithoutDeletingThought() {
         val tag = repo.saveTag(null, "Original")
         val p = ProfileRow(uid(), "Widget", "picker", jsonIds(listOf(tag.id)), tag.id); repo.saveProfile(p)
@@ -94,5 +105,36 @@ class RepositoryTest {
         try { Repository(disk).commitDraft(Repository(disk).draft("app", null, null).copy(text = "Durable")) } finally { disk.close() }
         val reopened = Room.databaseBuilder(context, MuseamoDatabase::class.java, name).build()
         try { assertEquals("Durable", reopened.dao().entries().single().text) } finally { reopened.close(); context.deleteDatabase(name) }
+    }
+    @Test fun cursorPaginationDoesNotRepeatAfterNewSave() {
+        val time = System.currentTimeMillis()
+        listOf("a", "b", "c").forEach { repo.dao.insertEntry(EntryRow(it, it, time, time)) }
+        val first = repo.dao.page("", false, "", 2, null, "")
+        repo.dao.insertEntry(EntryRow("new", "new", time + 1, time + 1))
+        val next = repo.dao.page("", false, "", 2, first.last().createdAt, first.last().id)
+        assertEquals(listOf("c", "b"), first.map { it.id })
+        assertEquals(listOf("a"), next.map { it.id })
+    }
+    @Test fun formattingSurvivesDraftSaveEditAndBackup() {
+        val markdown = "    indented text\n\n**Word**\n_noun_\n\n- A definition\n- Another meaning\n\n> A quote"
+        val draft = repo.draft("formatting", null, null).copy(text = markdown)
+        repo.saveDraft(draft)
+        assertEquals(markdown, repo.dao.draft("formatting")!!.text)
+        val entry = repo.commitDraft(draft)
+        assertEquals(markdown, entry.text)
+        val changed = "$markdown\n\n[Source](<https://example.com/definition>)"
+        repo.edit(entry.id, changed, emptyList())
+        val backup = Backup.export(repo)
+        repo.dao.deleteEntry(entry.id)
+        Backup.import(repo, backup)
+        assertEquals(changed, repo.dao.entry(entry.id)!!.text)
+    }
+    @Test fun editingDoesNotRecreateRenamedInlineTag() {
+        val tag = repo.saveTag(null, "Cool words")
+        val entry = repo.commitDraft(repo.draft("rename-inline", null, null).copy(text = "Hello #\"Cool words\""))
+        repo.saveTag(tag.id, "Vocabulary")
+        repo.edit(entry.id, entry.text + " revised", listOf(tag.id))
+        assertEquals(1, repo.dao.tags().size)
+        assertEquals(listOf(tag.id), ids(repo.dao.entry(entry.id)!!.tagIds))
     }
 }

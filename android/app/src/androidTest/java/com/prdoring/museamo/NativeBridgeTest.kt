@@ -37,9 +37,9 @@ class NativeBridgeTest {
         val text = "A thought doesn't have to become something to be worth keeping."
         repository { repo -> repo.commitDraft(repo.draft("bridge-test", null, null).copy(text = text)) }
         ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
-            until(scenario, "document.body.innerText", "Let it wander.")
+            until(scenario, "document.body.innerText", "museamo")
             until(scenario, "document.body.innerText", "worth keeping")
-            assertFalse(js(scenario, "document.body.innerText").contains("Browser preview"))
+            assertFalse(js(scenario, "document.body.innerText").contains("Preview ·"))
             js(scenario, "window.Capacitor.nativePromise('Museamo','library',{}).then(r=>window.__bridgeResult=JSON.stringify(r)).catch(e=>window.__bridgeResult='ERROR:'+e.message); 'started'")
             until(scenario, "window.__bridgeResult", "profiles")
             val name = "Bridge ${uid()}"
@@ -61,13 +61,24 @@ class NativeBridgeTest {
             val view = remote.apply(context, null)
             assertEquals("Cool words", view.findViewById<TextView>(R.id.widget_label).text.toString())
             assertEquals(View.VISIBLE, view.findViewById<View>(R.id.widget_picker).visibility)
-            view.measure(View.MeasureSpec.makeMeasureSpec(750, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(390, View.MeasureSpec.EXACTLY)); view.layout(0, 0, 750, 390)
-            val bitmap = Bitmap.createBitmap(750, 390, Bitmap.Config.ARGB_8888); view.draw(Canvas(bitmap))
+            val openApp = view.findViewById<View>(R.id.widget_open_app)
+            assertEquals("Open Museamo", openApp.contentDescription.toString())
+            assertTrue(openApp.hasOnClickListeners())
+            view.measure(View.MeasureSpec.makeMeasureSpec(750, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(150, View.MeasureSpec.EXACTLY)); view.layout(0, 0, 750, 150)
+            val bitmap = Bitmap.createBitmap(750, 150, Bitmap.Config.ARGB_8888); view.draw(Canvas(bitmap))
             File(context.getExternalFilesDir(null), "widget.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
         repository { it.saveProfile(profile.copy(mode = "fixed")) }
         val fixed = Store.executor.submit(Callable { CaptureWidget.views(context, 99991) }).get(5, TimeUnit.SECONDS)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { assertEquals(View.GONE, fixed.apply(context, null).findViewById<View>(R.id.widget_picker).visibility) }
         repository { it.dao.deleteBinding(99991) }
+    }
+    @Test fun widgetSetupIsNotAFloatingLauncherOverlay() {
+        val info = context.packageManager.getActivityInfo(android.content.ComponentName(context, WidgetConfigActivity::class.java), 0)
+        assertEquals(android.content.pm.ActivityInfo.LAUNCH_MULTIPLE, info.launchMode)
+        val theme = context.resources.newTheme().apply { applyStyle(info.theme, true) }
+        val value = android.util.TypedValue()
+        assertTrue(theme.resolveAttribute(android.R.attr.windowIsFloating, value, true))
+        assertEquals(0, value.data)
     }
 }

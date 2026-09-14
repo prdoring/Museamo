@@ -1,0 +1,8 @@
+allprojects { p ->
+    p.plugins.withId('com.android.application') {
+        p.androidComponents.finalizeDsl { dsl ->
+            dsl.defaultConfig.applicationId = 'com.prdoring.museamo.paperpreview'
+            dsl.defaultConfig.testApplicationId = 'com.prdoring.museamo.paperpreview.test'
+        }
+    }
+}

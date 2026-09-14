@@ -1,7 +1,25 @@
 <resources>
     <item name="mode_fixed" type="id"/><item name="mode_picker" type="id"/>
-    <color name="widget_background">#FFFEFA</color><color name="widget_border">#E5E6DE</color><color name="widget_accent">#41684F</color><color name="widget_text">#2E3834</color><color name="widget_soft">#EAF0E6</color>
-    <string name="widget_description">A thought, a word, a little gem. Capture with fixed tags or a tag picker.</string>
-    <string name="capture_thought">Capture a thought</string><string name="thought_prompt">A thought…</string><string name="no_tag_picker">No tag ▾</string>
+    <string name="widget_description">Message yourself. One row, your own tags, instant capture.</string>
+    <string name="capture_thought">Message yourself</string><string name="thought_prompt">Message yourself…</string><string name="no_tag_picker">No tag ▾</string>
     <string name="no_tag">No tag</string><string name="picker_arrow">▾</string>
+    <string name="open_app">Open Museamo</string>
+    <color name="widget_background">#E7D6AD</color>
+    <color name="widget_surface">#F4E7C7</color>
+    <color name="widget_text">#12303A</color>
+    <color name="widget_muted">#4A554C</color>
+    <color name="widget_accent">#A9412B</color>
+    <color name="widget_soft">#E7D6AD</color>
+    <color name="widget_border">#A4A58B</color>
+    <color name="widget_star">#765000</color>
+    <color name="widget_danger">#A9412B</color>
+    <color name="widget_thought">#262A27</color>
+    <color name="widget_action_bg">#A9412B</color>
+    <color name="widget_action_text">#F4E7C7</color>
+    <color name="widget_selection_bg">#A9412B</color>
+    <color name="widget_selection_text">#F4E7C7</color>
+    <color name="widget_focus">#12303A</color>
+    <color name="widget_focus_halo">#D3922E</color>
+    <color name="widget_nav">#12303A</color>
+    <color name="widget_nav_text">#F4E7C7</color>
 </resources>

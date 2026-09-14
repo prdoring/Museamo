@@ -1,3 +1,20 @@
 <resources>
-    <color name="widget_background">#202822</color><color name="widget_border">#354036</color><color name="widget_accent">#A4C7A5</color><color name="widget_text">#E0E5DC</color><color name="widget_soft">#2B3A2D</color>
+    <color name="widget_background">#0B1F26</color>
+    <color name="widget_surface">#12303A</color>
+    <color name="widget_text">#F4E7C7</color>
+    <color name="widget_muted">#C3BDA5</color>
+    <color name="widget_accent">#D3922E</color>
+    <color name="widget_soft">#203D44</color>
+    <color name="widget_border">#6F8581</color>
+    <color name="widget_star">#D3922E</color>
+    <color name="widget_danger">#FFAE98</color>
+    <color name="widget_thought">#F4E7C7</color>
+    <color name="widget_action_bg">#D3922E</color>
+    <color name="widget_action_text">#12303A</color>
+    <color name="widget_selection_bg">#A9412B</color>
+    <color name="widget_selection_text">#F4E7C7</color>
+    <color name="widget_focus">#F4E7C7</color>
+    <color name="widget_focus_halo">#D3922E</color>
+    <color name="widget_nav">#12303A</color>
+    <color name="widget_nav_text">#F4E7C7</color>
 </resources>
