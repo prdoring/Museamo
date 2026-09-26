@@ -1,3 +1,4 @@
+import { Presence, PageMotion, Disclosure } from "./components/Motion";
 import { PaperIcon } from "./components/PaperIcon";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -6,6 +7,7 @@ import {
 } from "lucide-react";
 import {
   bridge,
+  filterEntries,
   isNative,
   preview,
   type Draft,
@@ -13,7 +15,8 @@ import {
   type Library,
   type Tag,
 } from "./data";
-import { Editor, TagEditor } from "./components/Thoughts";
+import { LocationMap } from "./components/LocationMap";
+import { Editor, TagEditor, Sheet } from "./components/Thoughts";
 
 import { Navigation, type Tab } from "./components/Navigation";
 import { Feed } from "./components/Feed";
@@ -35,6 +38,7 @@ export default function App() {
     [loading, setLoading] = useState(true),
     [more, setMore] = useState(false),
     [newThoughts, setNewThoughts] = useState(false);
+  const [mapFocus, setMapFocus] = useState<Entry>();
   const [editing, setEditing] = useState<Entry>(),
     [draft, setDraft] = useState<Draft>(),
     [tagEditor, setTagEditor] = useState<Tag | "new">();
@@ -57,7 +61,7 @@ export default function App() {
   const key = (v: View) =>
     `${v.settings ? "settings" : v.tab}/${v.tagId || ""}/${v.query}`;
   const tag = library.tags.find((t) => t.id === view.tagId);
-  const modal = !!editing || !!draft || !!tagEditor;
+  const modal = !!mapFocus || !!editing || !!draft || !!tagEditor;
   async function refreshLibrary() {
     setLibrary(await bridge.library());
   }
@@ -258,7 +262,7 @@ export default function App() {
         entry.tagIds.includes(viewRef.current.tagId)) &&
       (viewRef.current.tab !== "gems" || entry.starred) &&
       (!viewRef.current.query ||
-        entry.text.toLowerCase().includes(viewRef.current.query.toLowerCase()));
+        filterEntries([entry], { search: viewRef.current.query }).length > 0);
     if (matches) {
       window.scrollTo(0, 0);
       await load();
@@ -319,7 +323,7 @@ export default function App() {
                 ? "Settings"
                 : tag
                   ? tag.name
-                  : view.tab === "gems"
+                  : view.tab === "map" ? "Map" : view.tab === "gems"
                     ? "Gems"
                     : view.tab === "tags"
                       ? "Tags"
@@ -361,13 +365,15 @@ export default function App() {
           </div>
         </header>
         <main>
-          {search && !view.settings && (
+          <Presence>{search && !view.settings && (
+            <Disclosure>
             <SearchField
               tags={view.tab === "tags" && !tag}
               query={view.query}
               change={(query) => setView({ ...view, query })}
             />
-          )}
+            </Disclosure>
+          )}</Presence>
           {error && (
             <div className="error" role="alert">
               {error}
@@ -377,6 +383,7 @@ export default function App() {
               </div>
             </div>
           )}
+          <PageMotion view={`${view.settings ? "settings" : view.tab}/${view.tagId || ""}`}>
           {view.settings ? (
             <Settings
               library={library}
@@ -393,6 +400,8 @@ export default function App() {
                 void load();
               }}
             />
+          ) : view.tab === "map" ? (
+            <LocationMap query={view.query} tags={library.tags} edit={setEditing} />
           ) : view.tab === "tags" && !view.tagId ? (
             <TagList
               tags={library.tags}
@@ -403,6 +412,7 @@ export default function App() {
           ) : (
             <Feed
               entries={entries}
+              openLocation={setMapFocus}
               tags={library.tags}
               loading={loading}
               more={more}
@@ -421,6 +431,7 @@ export default function App() {
               report={setNotice}
             />
           )}
+          </PageMotion>
         </main>
         <Navigation
           tab={view.tab}
@@ -465,7 +476,7 @@ export default function App() {
             {deleted.map((e) => (
               <div className="toast" key={e.id} role="status">
                 <span>
-                  Deleted: {e.text.slice(0, 28)}
+                  Deleted: {e.text.slice(0, 28) || `${e.attachments?.length || 0} attachment(s)`}
                   {e.text.length > 28 ? "…" : ""}
                 </span>
                 <button
@@ -485,7 +496,7 @@ export default function App() {
                   className="icon-button"
                   aria-label="Dismiss deletion"
                   onClick={() =>
-                    setDeleted((old) => old.filter((d) => d.id !== e.id))
+                    { void bridge.releaseDeleted({ id: e.id }).catch(failure); setDeleted((old) => old.filter((d) => d.id !== e.id)); }
                   }
                 >
                   <PaperIcon name="close" size={17} />
@@ -495,17 +506,18 @@ export default function App() {
           </aside>
         )}
       </div>
-      {editing && (
+      <Presence>{mapFocus && <Sheet title="Post location" close={() => setMapFocus(undefined)}><LocationMap focus={mapFocus} edit={entry => { setMapFocus(undefined); setEditing(entry); }} /></Sheet>}</Presence>
+      <Presence>{editing && (
         <Editor
           key={editing.id}
           initial={editing}
           tags={library.tags}
           refreshTags={refreshLibrary}
           close={() => setEditing(undefined)}
-          save={async (text, tagIds) => {
+          save={async (text, tagIds, attachments, location) => {
             const entry = editing;
             await mutate(() =>
-              bridge.updateEntry({ id: entry.id, text, tagIds }),
+              bridge.updateEntry({ id: entry.id, text, tagIds, ...(location !== undefined ? { location } : {}), attachmentIds: attachments.map(a => a.id) }),
             );
             const updated = (await bridge.getEntry({ id: entry.id })).entry;
             setEntries((old) =>
@@ -515,9 +527,7 @@ export default function App() {
                   : updated &&
                       (!view.tagId || updated.tagIds.includes(view.tagId)) &&
                       (!view.query ||
-                        updated.text
-                          .toLowerCase()
-                          .includes(view.query.toLowerCase()))
+                        filterEntries([updated], { search: view.query }).length > 0)
                     ? [updated]
                     : [],
               ),
@@ -525,8 +535,8 @@ export default function App() {
             setEditing(undefined);
           }}
         />
-      )}
-      {draft && (
+      )}</Presence>
+      <Presence>{draft && (
         <Editor
           key={draft.entryId}
           capture
@@ -535,15 +545,16 @@ export default function App() {
           refreshTags={refreshLibrary}
           close={() => setDraft(undefined)}
           discard={() => bridge.discardDraft({ profileKey: draft.profileKey })}
-          change={(text, tagIds) => {
-            const next = { ...draft, text, tagIds };
-            setDraft(next);
-            void bridge.updateDraft(next).catch(failure);
+          change={(text, tagIds, attachments, location) => {
+            const next = { ...draft, text, tagIds, attachments, ...(location !== undefined ? { location } : {}) };
+            // An exiting editor can still finish an async update; never reopen it.
+            setDraft(current => current?.entryId === draft.entryId ? next : current);
+            void bridge.updateDraft({ ...next, attachmentIds: attachments.map(a => a.id) }).catch(failure);
           }}
-          save={async (text, tagIds) => {
+          save={async (text, tagIds, attachments, location) => {
             selfMutation.current++;
             try {
-              const id = preview.save({ ...draft, text, tagIds });
+              const id = preview.save({ ...draft, text, tagIds, attachments, ...(location !== undefined ? { location } : {}) });
               setDraft(undefined);
               await saved(id);
             } finally {
@@ -551,8 +562,8 @@ export default function App() {
             }
           }}
         />
-      )}
-      {tagEditor && (
+      )}</Presence>
+      <Presence>{tagEditor && (
         <TagEditor
           tag={tagEditor}
           close={() => setTagEditor(undefined)}
@@ -561,7 +572,7 @@ export default function App() {
             await load(false, true);
           }}
         />
-      )}
+      )}</Presence>
     </div>
   );
 }

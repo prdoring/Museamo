@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { PaperIcon } from "./PaperIcon";
 import { Download, Upload } from "lucide-react";
 import { bridge, isNative, preview, type Library } from "../data";
@@ -12,8 +13,19 @@ export function Settings({
   run: (fn: () => Promise<unknown>) => Promise<void>;
   refresh: () => void;
 }) {
+  const [locationEnabled, setLocationEnabled] = useState(false);
+  useEffect(() => { void run(async () => setLocationEnabled((await bridge.locationSettings()).enabled)); }, []);
   return (
     <div className="settings">
+      <section>
+        <h2>Post locations</h2>
+        <label><input type="checkbox" checked={locationEnabled} onChange={e => {
+          const enabled = e.target.checked;
+          void run(async () => { const result = await bridge.setLocationEnabled({ enabled }); setLocationEnabled(result.enabled); if (enabled && !result.enabled) report("Location permission was not granted. Posts will save without location."); });
+        }} /> Automatically save location</label>
+        <p>Museamo asks for location permission on first opening. After you allow it, every new post tries to add a location automatically—you do not need to press the pin. Tap the pin to skip location for one post, or turn this setting off for all new posts. If services are off or unavailable, your post saves without a location. No background tracking.</p>
+        <p className="muted">Address lookup may send coordinates to your device’s geocoding service. Opening maps requests map tiles from OpenStreetMap. Your post text and custom place names stay on this device.</p>
+      </section>
       <section>
         <h2>Widgets</h2>
         <p>
@@ -53,7 +65,7 @@ export function Settings({
       <section>
         <h2>Backup</h2>
         <p>
-          Keep a copy of your thoughts, tags, and widgets. Imports keep
+          Export a ZIP archive with your thoughts, original photos/videos, tags, and widgets. Older JSON backups can still be imported. Imports keep
           conflicting content as separate copies.
         </p>
         <div className="action-row">
@@ -87,7 +99,7 @@ export function Settings({
         <h2>About & storage</h2>
         <p>Museamo · a place for your thoughts.</p>
         <p className="muted">
-          Stored on this device. No account or background uploads. Uninstalling
+          Attachments stay on this device at their original quality. Linked media loads from its host when visible. No account or background uploads. Uninstalling
           removes local data; export a backup first.
         </p>
       </section>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:padding="2dp" android:baselineAligned="false">
+ <ImageButton android:id="@+id/widget_capture" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:layout_marginEnd="1dp" android:padding="3dp" android:scaleType="centerInside" android:background="@drawable/widget_capture_button" android:src="@drawable/widget_message" android:contentDescription="@string/capture_thought"/>
+ <ImageButton android:id="@+id/widget_open_app" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:layout_marginStart="1dp" android:padding="3dp" android:scaleType="centerInside" android:background="@drawable/widget_app_button" android:src="@drawable/widget_open_app" android:contentDescription="@string/open_app"/>
+</LinearLayout>
+

@@ -3,15 +3,42 @@ import {
   registerPlugin,
   type PluginListenerHandle,
 } from "@capacitor/core";
+import { type Attachment, MEDIA_LIMIT } from "./media";
 import { hashtags } from "./hashtags";
+export type LocationStatus = "available" | "services-off" | "permission-denied" | "disabled" | "timeout" | "cancelled" | "unavailable";
+export function locationStatusMessage(status: LocationStatus) {
+  switch (status) {
+    case "services-off": return "Device location is off. This post will save without a location.";
+    case "permission-denied": return "Location permission was not granted. You can allow it in Android app settings.";
+    case "timeout": return "Couldn’t find your location. Tap the pin to retry.";
+    case "disabled": return "Automatic location is off. Tap the pin to add a location to this post.";
+    case "cancelled": return "Location lookup stopped. Tap the pin to retry.";
+    case "unavailable": return "Location is unavailable. Tap the pin to retry.";
+    default: return "";
+  }
+}
+export interface PostLocation {
+  latitude: number;
+  longitude: number;
+  capturedAt: number;
+  accuracy?: number;
+  token: string;
+  name?: string;
+  address?: string;
+  locality?: string;
+  userLabel?: string;
+}
+export const locationLabel = (location: PostLocation) => location.userLabel?.trim() || location.name || location.address || location.locality || "Saved location";
 export interface Tag {
   id: string;
   name: string;
   count?: number;
 }
 export interface Entry {
+  location?: PostLocation | null;
   id: string;
   text: string;
+  attachments?: Attachment[];
   createdAt: number;
   updatedAt: number;
   starred: boolean;
@@ -26,13 +53,17 @@ export interface Profile {
   selectedTagId: string | null;
 }
 export interface Draft {
+  location?: PostLocation | null;
+  locationAttempted?: boolean;
   profileKey: string;
+  attachments?: Attachment[];
   entryId: string;
   text: string;
   tagIds: string[];
   profileId: string | null;
 }
 export interface EntryQuery {
+  located?: boolean;
   search?: string;
   starred?: boolean;
   tagId?: string;
@@ -50,6 +81,14 @@ export interface ComposeResult {
   entryId?: string;
 }
 export interface MuseamoBridge {
+  openLocation(input: { latitude: number; longitude: number }): Promise<void>;
+  locationSettings(): Promise<{ enabled: boolean; permitted: boolean }>;
+  setLocationEnabled(input: { enabled: boolean }): Promise<{ enabled: boolean }>;
+  currentLocation(): Promise<{ location: PostLocation | null; status: LocationStatus }>;
+  pickMedia(input: { remaining: number }): Promise<{ attachments: Attachment[] }>;
+  resolveMedia(input: { id: string }): Promise<{ url: string; thumbnailUrl?: string }>;
+  releaseMedia(input: { ids: string[] }): Promise<void>;
+  releaseDeleted(input: { id: string }): Promise<void>;
   copyFormatted(input: { text: string; html: string }): Promise<void>;
   openExternal(input: { url: string }): Promise<void>;
   queryEntries(
@@ -61,6 +100,9 @@ export interface MuseamoBridge {
     id: string;
     text: string;
     tagIds: string[];
+    attachmentIds?: string[];
+    location?: PostLocation | null;
+    locationAttempted?: boolean;
   }): Promise<void>;
   setStar(input: { id: string; starred: boolean }): Promise<void>;
   deleteEntry(input: { id: string }): Promise<void>;
@@ -76,6 +118,9 @@ export interface MuseamoBridge {
     profileKey: string;
     text: string;
     tagIds: string[];
+    attachmentIds?: string[];
+    location?: PostLocation | null;
+    locationAttempted?: boolean;
   }): Promise<void>;
   discardDraft(input: { profileKey: string }): Promise<void>;
   compose(input: { tagId?: string }): Promise<ComposeResult>;
@@ -98,6 +143,7 @@ const now = Date.now();
 export const previewEntries: Entry[] = [
   {
     id: "preview-1",
+    location: { latitude: 37.7599, longitude: -122.4241, capturedAt: Date.now(), token: "preview-location-1", locality: "San Francisco", userLabel: "Bakery" },
     text: 'A book is just a very long message from someone you’ve never met. #"Shower thoughts"',
     createdAt: now,
     updatedAt: now,
@@ -107,6 +153,7 @@ export const previewEntries: Entry[] = [
   },
   {
     id: "preview-2",
+    location: { latitude: 37.7694, longitude: -122.4862, capturedAt: Date.now(), token: "preview-location-2" },
     text: '**Apricity**\n_noun_\n\nThe warmth of the sun in winter.\n\n- A whole feeling, tucked into one word.\n- Best enjoyed by a sunny window.\n #"Cool words"',
     createdAt: now - 3600000,
     updatedAt: now - 3600000,
@@ -136,10 +183,11 @@ export const previewEntries: Entry[] = [
 export function filterEntries(entries: Entry[], query: EntryQuery): Entry[] {
   return entries.filter(
     (e) =>
+      (!query.located || !!e.location) &&
       (!query.starred || e.starred) &&
       (!query.tagId || e.tagIds.includes(query.tagId)) &&
       (!query.search ||
-        e.text.toLocaleLowerCase().includes(query.search.toLocaleLowerCase())),
+        [e.text, e.location?.userLabel, e.location?.name, e.location?.address, e.location?.locality].filter(Boolean).join(" ").toLocaleLowerCase().includes(query.search.toLocaleLowerCase())),
   );
 }
 export function dayLabel(timestamp: number): string {
@@ -212,6 +260,7 @@ export const preview = {
     entries = empty ? [] : clone(previewEntries);
     tags = empty ? [] : clone(previewTags);
     drafts.clear();
+    deletedMedia.clear(); browserPins.clear(); collectBrowserMedia();
     failNext = false;
     changed();
   },
@@ -232,13 +281,15 @@ export const preview = {
   },
   save(draft: Draft) {
     mutation();
-    if (!draft.text.trim()) throw new Error("Write a thought first.");
+    if (!draft.text.trim() && !draft.attachments?.length) throw new Error("Write a thought first.");
     const found = entries.find((e) => e.id === draft.entryId);
     if (found) return found.id;
     const time = Date.now();
     entries.unshift({
       id: draft.entryId,
       text: draft.text,
+      location: draft.location,
+      attachments: clone(draft.attachments || []),
       tagIds: assigned(draft.text, draft.tagIds),
       starred: false,
       createdAt: time,
@@ -250,7 +301,67 @@ export const preview = {
     return draft.entryId;
   },
 };
+const browserMedia = new Map<string, { attachment: Attachment; url: string }>();
+const deletedMedia = new Map<string, Entry>();
+function collectBrowserMedia() {
+  const referenced = new Set([...entries, ...drafts.values(), ...deletedMedia.values()].flatMap(e => e.attachments?.map(a => a.id) || []));
+  for (const [id, media] of browserMedia) if (!referenced.has(id) && !browserPins.has(id)) { URL.revokeObjectURL(media.url); browserMedia.delete(id); }
+}
+const browserPins = new Set<string>();
+const resolveAttachments = (ids: string[]) => {
+  if (ids.length > MEDIA_LIMIT || new Set(ids).size !== ids.length) throw new Error("Choose up to 10 different attachments.");
+  return ids.map(id => { const media = browserMedia.get(id); if (!media) throw new Error("Attachment is unavailable. Select it again."); return media.attachment; });
+};
+let previewLocationEnabled = true;
 const browser: MuseamoBridge = {
+  async openLocation({ latitude, longitude }) { await browser.openExternal({ url: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}` }); },
+  async locationSettings() { return { enabled: previewLocationEnabled, permitted: true }; },
+  async setLocationEnabled({ enabled }) { previewLocationEnabled = enabled; return { enabled }; },
+  async currentLocation() { return { status: "available", location: { latitude: 37.7599, longitude: -122.4241, capturedAt: Date.now(), accuracy: 25, token: crypto.randomUUID(), locality: "San Francisco (preview)" } }; },
+  async pickMedia({ remaining }) {
+    if (remaining < 1) throw new Error("Choose up to 10 attachments.");
+    const files = await new Promise<File[]>(resolve => {
+      const input = document.createElement("input");
+      input.type = "file"; input.accept = "image/*,video/*"; input.multiple = true;
+      input.onchange = () => { resolve(Array.from(input.files || [])); input.remove(); };
+      input.oncancel = () => { resolve([]); input.remove(); };
+      input.hidden = true; document.body.append(input); input.click();
+    });
+    if (files.length > remaining) throw new Error("Choose up to " + remaining + " more attachments.");
+    for (const f of files) {
+      if (!/^(image\/(jpeg|png|gif|webp|heic|heif|avif)|video\/(mp4|webm|quicktime|x-m4v|ogg))$/.test(f.type)) throw new Error("Choose a supported photo or video format.");
+      if (!f.size || f.size > (f.type.startsWith("image/") ? 50 : 500) * 1024 * 1024) throw new Error("Use images up to 50 MiB and videos up to 500 MiB.");
+    }
+    const created: string[] = [];
+    try {
+      const attachments: Attachment[] = [];
+      for (const f of files) {
+        const kind = f.type.startsWith("image/") ? "image" : "video";
+        const url = URL.createObjectURL(f);
+        const id = crypto.randomUUID();
+        try {
+          const metadata = await new Promise<{ width: number; height: number; duration?: number }>((resolve, reject) => {
+            const element = kind === "image" ? new Image() : document.createElement("video");
+            const finish = () => { clearTimeout(timer); element.onload = null; element.onerror = null; if (element instanceof HTMLVideoElement) { element.onloadedmetadata = null; element.removeAttribute("src"); element.load(); } };
+            const fail = () => { finish(); reject(new Error("This photo or video cannot be displayed. Choose a supported file.")); };
+            const timer = window.setTimeout(fail, 15000);
+            element.onerror = fail;
+            if (element instanceof HTMLVideoElement) {
+              element.preload = "metadata";
+              element.onloadedmetadata = () => { const meta = { width: element.videoWidth, height: element.videoHeight, duration: element.duration * 1000 }; finish(); if (!meta.width || !meta.height) reject(new Error("This file has no video.")); else resolve(meta); };
+            } else element.onload = () => { const meta = { width: element.naturalWidth, height: element.naturalHeight }; finish(); resolve(meta); };
+            element.src = url;
+          });
+          const attachment: Attachment = { id, kind, mimeType: f.type, filename: f.name, byteSize: f.size, ...metadata };
+          browserMedia.set(id, { attachment, url }); browserPins.add(id); created.push(id); attachments.push(attachment);
+        } catch (error) { URL.revokeObjectURL(url); throw error; }
+      }
+      return { attachments };
+    } catch (error) { created.forEach(id => { const m = browserMedia.get(id); if (m) URL.revokeObjectURL(m.url); browserMedia.delete(id); browserPins.delete(id); }); throw error; }
+  },
+  async resolveMedia({ id }) { const m = browserMedia.get(id); if (!m) throw new Error("Media is unavailable."); return { url: m.url }; },
+  async releaseMedia({ ids }) { ids.forEach(id => browserPins.delete(id)); collectBrowserMedia(); },
+  async releaseDeleted({ id }) { deletedMedia.delete(id); collectBrowserMedia(); },
   async copyFormatted({ text }) {
     await navigator.clipboard.writeText(text);
   },
@@ -290,12 +401,15 @@ const browser: MuseamoBridge = {
       profiles,
     });
   },
-  async updateEntry({ id, text, tagIds }) {
+  async updateEntry({ id, text, tagIds, attachmentIds, location }) {
     mutation();
-    if (!text.trim()) throw new Error("A thought cannot be empty.");
     const e = entries.find((e) => e.id === id);
     if (!e) throw new Error("This thought no longer exists.");
+    const attachments = attachmentIds ? resolveAttachments(attachmentIds) : e.attachments || [];
+    if (!text.trim() && !attachments.length) throw new Error("Add text or an attachment.");
     Object.assign(e, {
+      ...(location !== undefined ? { location } : {}),
+      attachments,
       text,
       tagIds: assigned(text, tagIds, e),
       updatedAt: Date.now(),
@@ -310,11 +424,14 @@ const browser: MuseamoBridge = {
   },
   async deleteEntry({ id }) {
     mutation();
+    const entry = entries.find(e => e.id === id);
+    if (entry) deletedMedia.set(id, entry);
     entries = entries.filter((e) => e.id !== id);
     changed();
   },
   async restoreEntry({ entry }) {
     mutation();
+    deletedMedia.delete(entry.id);
     if (!entries.some((e) => e.id === entry.id))
       entries.push(
         clone({
@@ -360,6 +477,8 @@ const browser: MuseamoBridge = {
     const key = `app:${tagId || "general"}`;
     if (!drafts.has(key))
       drafts.set(key, {
+        location: previewLocationEnabled ? (await browser.currentLocation()).location : null,
+        locationAttempted: true,
         profileKey: key,
         entryId: crypto.randomUUID(),
         text: "",
@@ -368,12 +487,13 @@ const browser: MuseamoBridge = {
       });
     return { draft: clone(drafts.get(key)!) };
   },
-  async updateDraft({ profileKey, text, tagIds }) {
+  async updateDraft({ profileKey, text, tagIds, attachmentIds, location, locationAttempted }) {
     const d = drafts.get(profileKey);
-    if (d) Object.assign(d, { text, tagIds: clone(tagIds) });
+    if (d) Object.assign(d, { ...(location !== undefined ? { location } : {}), locationAttempted, text, tagIds: clone(tagIds), attachments: attachmentIds ? resolveAttachments(attachmentIds) : d.attachments || [] });
   },
   async discardDraft({ profileKey }) {
     drafts.delete(profileKey);
+    collectBrowserMedia();
   },
   async compose() {
     return { cancelled: true };

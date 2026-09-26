@@ -1,6 +1,6 @@
 import { PaperIcon } from "./PaperIcon";
-import { Hash} from "lucide-react";
-export type Tab = "stream" | "gems" | "tags";
+import { Hash, MapPin} from "lucide-react";
+export type Tab = "stream" | "gems" | "tags" | "map";
 export function Navigation({
   tab,
   settings,
@@ -26,7 +26,7 @@ export function Navigation({
         </button>
       )}
       <nav aria-label="Main navigation">
-        {(["stream", "gems", "tags"] as Tab[]).map((next) => (
+        {(["stream", "gems", "tags", "map"] as Tab[]).map((next) => (
           <button
             key={next}
             aria-current={!settings && next === tab ? "page" : undefined}
@@ -37,7 +37,7 @@ export function Navigation({
             ) : next === "gems" ? (
               <PaperIcon name="star" size={21} />
             ) : (
-              <Hash size={21} />
+              next === "map" ? <MapPin size={21} /> : <Hash size={21} />
             )}
             <span>{next[0].toUpperCase() + next.slice(1)}</span>
           </button>

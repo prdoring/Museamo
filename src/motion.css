@@ -1,0 +1,40 @@
+:root {
+  --motion-fast: 120ms;
+  --motion-exit: 160ms;
+  --motion-enter: 180ms;
+  --motion-ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+.sheet-backdrop, .photo-lightbox { animation: surface-fade-in var(--motion-enter) var(--motion-ease) both; }
+.sheet { animation: surface-sheet-in var(--motion-enter) var(--motion-ease) both; }
+.sheet-backdrop[data-exiting="true"], .photo-lightbox[data-exiting="true"] {
+  animation: surface-fade-out var(--motion-exit) ease-in both;
+  pointer-events: none;
+}
+.sheet-backdrop[data-exiting="true"] .sheet { animation: surface-sheet-out var(--motion-exit) ease-in both; }
+
+.motion-disclosure { display: grid; animation: disclosure-in var(--motion-enter) var(--motion-ease) both; }
+.motion-disclosure > div { min-height: 0; overflow: hidden; }
+.motion-disclosure[data-exiting="true"] { animation: disclosure-out var(--motion-exit) ease-in both; }
+.confirm, .suggestions, .toast, .new-thoughts { animation: surface-fade-in var(--motion-fast) ease-out; }
+.photo-stage img { transition: transform var(--motion-enter) var(--motion-ease); }
+.photo-stage[data-dragging="true"] img { transition: none; }
+.photo-stage img[data-ready="false"] { opacity: 0; }
+.photo-stage img[data-ready="true"] { animation: surface-fade-in var(--motion-enter) ease-out; }
+.photo-stage > p { position: absolute; }
+.bottom-dock nav button, .icon-button, .chip, .composer-icon, .primary, .secondary {
+  transition: background-color var(--motion-fast) ease-out, color var(--motion-fast) ease-out, transform var(--motion-fast) ease-out;
+}
+.icon-button:active, .composer-icon:active, .primary:active, .secondary:active { transform: scale(.97); }
+
+@keyframes surface-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes surface-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes surface-sheet-in { from { transform: translateY(24px); } to { transform: translateY(0); } }
+@keyframes surface-sheet-out { from { transform: translateY(0); } to { transform: translateY(16px); } }
+@keyframes disclosure-in { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
+@keyframes disclosure-out { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .icon-button:active, .composer-icon:active, .primary:active, .secondary:active { transform: none; }
+}

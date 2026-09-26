@@ -134,3 +134,30 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .tiptap p:only-child:has(> br.ProseMirror-trailingBreak:first-child)::before { content: attr(data-placeholder); }
 .tiptap:has(> p:only-child > br:only-child)::before { content: attr(data-placeholder); color: var(--muted); position: absolute; pointer-events: none; }
 .format-toolbar button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+/* Compact mobile composition: one action row and one horizontal attachment rail. */
+.sheet:has(.composer-bar) { display: flex; flex-direction: column; max-height: calc(var(--viewport-height) - max(12px, env(safe-area-inset-top))); }
+.sheet:has(.composer-bar) > .sheet-heading { flex-shrink: 0; }
+.sheet:has(.composer-bar) .composer-input { min-height: clamp(140px, 28dvh, 240px); max-height: 40dvh; overflow-y: auto; }
+.sheet:has(.composer-bar) .chips:empty { display: none; }
+.composer-bar { display: flex; align-items: center; flex-shrink: 0; gap: 0; padding-top: 8px; border-top: 1px solid var(--line); margin-top: 8px; }
+.composer-bar .composer-icon { display: grid; place-items: center; flex: 0 0 44px; width: 44px; min-width: 44px; height: 48px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 18px; }
+.composer-bar .composer-icon[aria-expanded="true"] { background: var(--soft); color: var(--ink); }
+.composer-media-action { display: flex; }
+.composer-spacer { flex: 1; }
+.composer-bar > .primary { min-height: 48px; padding-inline: 16px; flex-shrink: 0; }
+.composer-bar summary { width: 44px; justify-content: center; }
+.composer-bar details button { position: absolute; bottom: 100%; left: 0; width: max-content; background: var(--surface); z-index: 2; }
+.attachment-rail { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; padding-block: 8px; }
+.attachment-rail:empty { display: none; }
+.attachment-tile { position: relative; flex: 0 0 88px; height: 88px; background: var(--soft); border-radius: 8px; overflow: hidden; }
+.attachment-tile > img { width: 100%; height: 100%; object-fit: cover; }
+.attachment-tile .attachment-remove { position: absolute; top: 0; right: 0; display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 50%; background: #0009; color: white; }
+.attachment-video-badge { position: absolute; bottom: 4px; left: 4px; background: #000a; color: white; border-radius: 3px; padding: 1px 4px; font-size: 11px; }
+.photo-lightbox { position: fixed; left: 0; top: var(--viewport-top, 0px); width: 100%; height: var(--viewport-height, 100dvh); z-index: 100; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; background: #101112; color: #fff; padding: max(12px, env(safe-area-inset-top)) env(safe-area-inset-right) max(12px, env(safe-area-inset-bottom)) env(safe-area-inset-left); }
+.photo-lightbox-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; height: 48px; padding-inline: 20px 8px; font: 14px "DM Sans", sans-serif; color: #ddd; }
+.photo-lightbox-header button { display: grid; place-items: center; width: 48px; height: 48px; min-height: 48px; padding: 0; border: 0; background: transparent; color: white; border-radius: 50%; }
+.photo-stage { position: relative; display: flex; align-items: center; justify-content: center; flex: 1; min-height: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.photo-stage img { width: 100%; height: 100%; object-fit: contain; flex-shrink: 0; will-change: transform; pointer-events: none; }
+.photo-stage p { padding: 24px; }
+.photo-lightbox:focus { outline: none; }
+.composer-bar { position: sticky; bottom: 0; background: var(--bg); z-index: 2; }

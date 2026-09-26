@@ -34,7 +34,7 @@ class CaptureFlowTest {
                 java.io.File(context.getExternalFilesDir(null), "capture.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             }
             onView(withContentDescription("Thought text")).perform(replaceText(text), closeSoftKeyboard())
-            onView(withContentDescription("Send thought and return")).perform(scrollTo(), click())
+            onView(withContentDescription("Send thought")).perform(click())
             settle()
             val entries = repository { repo -> repo.dao.query(text, false, "", 10, 0) }
             assertEquals(1, entries.size); assertEquals(profile.tagIds, entries.single().tagIds)

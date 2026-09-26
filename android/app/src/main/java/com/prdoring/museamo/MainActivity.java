@@ -8,9 +8,17 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 public class MainActivity extends BridgeActivity {
+    private LocationPermission locationPermission;
+    @Override public void onResume() {
+        super.onResume();
+        if (locationPermission != null) locationPermission.onOpen();
+    }
     @Override public void onCreate(Bundle state) {
         registerPlugin(MuseamoPlugin.class);
         super.onCreate(state);
+        locationPermission = new LocationPermission(this, granted -> {});
+        getBridge().getWebView().getSettings().setUserAgentString(getBridge().getWebView().getSettings().getUserAgentString() + " Museamo/0.3");
+        getBridge().setWebViewClient(new MediaWebViewClient(getBridge()));
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {
                 if (getBridge() == null) { finish(); return; }

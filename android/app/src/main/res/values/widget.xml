@@ -1,6 +1,6 @@
 <resources>
     <item name="mode_fixed" type="id"/><item name="mode_picker" type="id"/>
-    <string name="widget_description">Message yourself. One row, your own tags, instant capture.</string>
+    <string name="widget_description">Message yourself. Resize from a compact tile to a roomy capture card.</string>
     <string name="capture_thought">Message yourself</string><string name="thought_prompt">Message yourself…</string><string name="no_tag_picker">No tag ▾</string>
     <string name="no_tag">No tag</string><string name="picker_arrow">▾</string>
     <string name="open_app">Open Museamo</string>

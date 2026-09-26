@@ -17,8 +17,10 @@ export function Feed({
   remove,
   openTag,
   report,
+  openLocation,
 }: {
   entries: Entry[];
+  openLocation: (entry: Entry) => void;
   tags: Tag[];
   loading: boolean;
   more: boolean;
@@ -72,6 +74,7 @@ export function Feed({
           )}
           <Post
             entry={entry}
+            openLocation={openLocation}
             tags={tags}
             star={() => star(entry)}
             edit={() => edit(entry)}

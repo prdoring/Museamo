@@ -24,7 +24,7 @@ Trailhead Clean: 24px mastheads, 22px sheet and section headings. Dynamic tag ti
 
 Use the actual neutral construction-paper tile for surrounding stock, dock and sheet chrome at 768px; use the ink tile at 320px for navy bands and dark stock. Reading surfaces use quiet grain at 4% in light mode (2.5% web dark), never layered over construction-paper shading. Texture does not paint over control text or intercept input. Native tiles scale with density; RemoteViews keeps an explicit 40dp inner row so bitmap intrinsic dimensions cannot enlarge widgets.
 
-Navigation is a rectangular navy band with brick selected items and cream labels. Controls have 4px corners; structural panels are square; sheets have 12px corners. Widgets are borderless paper strips with a 4dp outer inset; launcher rounding must never cut through a contrasting frame. Fields have 2px ink borders, feed entries have fine rules, and day dividers have short brick rules. Keep 16px gutters and 48px app touch targets, with existing 40dp widget targets. Focus has an ink/cream outline and ochre reinforcement. No blurred shadows or arrival animations.
+Navigation is a rectangular navy band with brick selected items and cream labels. Controls have 4px corners; structural panels are square; sheets have 12px corners. Widgets are borderless paper strips with a 4dp outer inset; launcher rounding must never cut through a contrasting frame. Fields have 2px ink borders, feed entries have fine rules, and day dividers have short brick rules. Keep 16px gutters and 48px app touch targets, with existing 40dp widget targets. Focus has an ink/cream outline and ochre reinforcement. No blurred shadows or decorative arrival animations.
 
 The selected document, star, gear and utility glyphs use scoped geometry through PaperIcon. The original sources and native VectorDrawable adaptations are documented in docs/paper-assets.md. The post star retains its existing outline/filled state; uncovered actions retain clean Lucide glyphs. Do not add portfolio identity, social marks, landscape scenes or Deco ornaments.
 
@@ -57,7 +57,7 @@ Parser references: [react-markdown](https://github.com/remarkjs/react-markdown),
 
 Use direct labels: Message yourself, Send, Add tag, Choose tag, Save widget, Backup. Avoid motivational headings and fake social vocabulary.
 
-Loading is announced; empty libraries and search misses are distinct. Errors stay beside the operation with retry; never imply a failed save succeeded. No confetti or arrival animations. Star feedback and sheet transitions are 120–180ms and honor reduced motion.
+Loading is announced; empty libraries and search misses are distinct. Errors stay beside the operation with retry; never imply a failed save succeeded. No confetti or decorative content arrival animations. Navigation fades over 180ms; sheets and photo lightboxes enter in 180ms and exit in 160ms. Search and composer panels expand/collapse over the same interval. Button and star feedback takes 120ms. Web transitions honor reduced motion; native window transitions use Android’s system animation scale.
 
 Browser preview is in-memory and interactive, resets on refresh, and has explicit example/reset/failure tools. Android Room data stays separate. Visual, launcher, keyboard, TalkBack, and latency acceptance require device verification; automated build success is not that evidence.
 

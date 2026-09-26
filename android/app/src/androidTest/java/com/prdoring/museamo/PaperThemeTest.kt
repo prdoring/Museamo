@@ -73,7 +73,7 @@ class PaperThemeTest {
                 instrumentation.runOnMainSync {
                 val view = remote.apply(themed, FrameLayout(themed))
                 val px = (width * themed.resources.displayMetrics.density).toInt()
-                view.measure(View.MeasureSpec.makeMeasureSpec(px, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                view.measure(View.MeasureSpec.makeMeasureSpec(px, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec((48 * themed.resources.displayMetrics.density).toInt(), View.MeasureSpec.EXACTLY))
                 check(view.measuredHeight <= (48 * themed.resources.displayMetrics.density).toInt() + 1) { "Widget texture expanded the capture row" }
                 view.layout(0, 0, px, view.measuredHeight)
                 save(view, "widget-$width-$name", verifyFrame = true)

@@ -1,3 +1,6 @@
+import { Presence, Disclosure, useExiting, lockOverlay, reducedMotion } from "./Motion";
+import { MediaGallery, AttachmentEditor } from "./Media";
+import { type Attachment } from "../media";
 import { PaperIcon } from "./PaperIcon";
 import { FormattedText, copyFormatted } from "./FormattedText";
 import { type Format } from "../formatting";
@@ -13,7 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import {
-  Bold, Italic, List, ListOrdered, Quote,
+  Bold, Italic, List, ListOrdered, Quote, MapPin, LoaderCircle,
   Copy,
   Hash,
   MoreHorizontal,
@@ -21,7 +24,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { bridge, isNative, type Entry, type Tag } from "../data";
+import { bridge, isNative, locationLabel, locationStatusMessage, type PostLocation, type Entry, type Tag } from "../data";
 import {
   activeHashtag,
   hashtags,
@@ -38,16 +41,16 @@ export function Sheet({
   children: ReactNode;
   close: () => void;
 }) {
+  const exiting = useExiting();
   const ref = useRef<HTMLElement>(null);
+  // Capture before an autoFocus field mounts and replaces the original trigger.
+  const trigger = useRef(document.activeElement as HTMLElement | null);
+  const exitingRef = useRef(exiting);
+  exitingRef.current = exiting;
   const closeRef = useRef(close);
-  closeRef.current = close;
+  closeRef.current = exiting ? () => {} : close;
   useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    const shell = document.querySelector<HTMLElement>(".app-shell");
-    const previousInert = shell?.inert || false;
-    if (shell) shell.inert = true;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlock = lockOverlay(trigger.current);
     const focusable = () =>
       Array.from(
         ref.current?.querySelectorAll<HTMLElement>(
@@ -59,6 +62,7 @@ export function Sheet({
       focusable()[0]
     )?.focus();
     const key = (e: KeyboardEvent) => {
+      if (exitingRef.current) return;
       if (e.key === "Escape") {
         e.preventDefault();
         closeRef.current();
@@ -85,14 +89,14 @@ export function Sheet({
     return () => {
       window.removeEventListener("museamoBack", back);
       document.removeEventListener("keydown", key);
-      document.body.style.overflow = previousOverflow;
-      if (shell) shell.inert = previousInert;
-      before?.focus();
+      unlock();
     };
   }, []);
   return createPortal(
     <div
       className="sheet-backdrop"
+      data-exiting={exiting}
+      inert={exiting}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -124,8 +128,10 @@ export function Post({
   remove,
   openTag,
   report,
+  openLocation,
 }: {
   entry: Entry;
+  openLocation?: (entry: Entry) => void;
   tags: Tag[];
   star: () => void;
   edit: () => void;
@@ -137,6 +143,17 @@ export function Post({
     [overflows, setOverflows] = useState(false),
     [menu, setMenu] = useState(false);
   const body = useRef<HTMLDivElement>(null);
+  const copy = useRef<HTMLDivElement>(null);
+  const previousHeight = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const el = copy.current, from = previousHeight.current;
+    if (!el || from === undefined || reducedMotion()) return;
+    const animation = el.animate(
+      [{ height: `${from}px`, overflow: "hidden" }, { height: `${el.clientHeight}px`, overflow: "hidden" }],
+      { duration: 180, easing: "cubic-bezier(.2,.7,.2,1)" },
+    );
+    return () => animation.cancel();
+  }, [expanded]);
   useLayoutEffect(() => {
     const el = body.current;
     if (!el) return;
@@ -178,6 +195,7 @@ export function Post({
           <MoreHorizontal size={21} />
         </button>
       </div>
+      <div ref={copy}>
       <div
         ref={body}
         className={"post-text rich-text " + (expanded ? "" : "clamped")}
@@ -189,11 +207,14 @@ export function Post({
           report={report}
         />
       </div>
+      </div>
       {overflows && (
-        <button className="text-button" onClick={() => setExpanded(!expanded)}>
+        <button className="text-button" onClick={() => { previousHeight.current = copy.current?.getBoundingClientRect().height; setExpanded(!expanded); }}>
           {expanded ? "Show less" : "Show more"}
         </button>
       )}
+      {entry.location && <button className="location-label" onClick={() => openLocation?.(entry)}>⌖ {locationLabel(entry.location)}</button>}
+      <MediaGallery attachments={entry.attachments} text={entry.text} />
       {!!entry.tagIds.length && (
         <div className="chips post-tags">
           {entry.tagIds
@@ -206,7 +227,7 @@ export function Post({
             ))}
         </div>
       )}
-      {menu && (
+      <Presence>{menu && (
         <Sheet title="Thought actions" close={() => setMenu(false)}>
           <button
             className="menu-row"
@@ -243,7 +264,7 @@ export function Post({
             Delete
           </button>
         </Sheet>
-      )}
+      )}</Presence>
     </article>
   );
 }
@@ -257,11 +278,11 @@ export function Editor({
   refreshTags,
   discard,
 }: {
-  initial: { text: string; tagIds: string[] };
+  initial: { text: string; tagIds: string[]; attachments?: Attachment[]; location?: PostLocation | null };
   tags: Tag[];
   capture?: boolean;
-  change?: (text: string, ids: string[]) => void;
-  save: (text: string, ids: string[]) => Promise<void>;
+  change?: (text: string, ids: string[], attachments: Attachment[], location?: PostLocation | null) => void;
+  save: (text: string, ids: string[], attachments: Attachment[], location?: PostLocation | null) => Promise<void>;
   close: () => void;
   refreshTags: () => Promise<void>;
   discard?: () => Promise<void>;
@@ -288,6 +309,30 @@ export function Editor({
     [confirm, setConfirm] = useState(false),
     [cursorText, setCursorText] = useState({ text: "", offset: 0 }),
     [showFormatting, setShowFormatting] = useState(false);
+  const [location, setLocation] = useState(initial.location);
+  const [locating, setLocating] = useState(false);
+  const [showLocation, setShowLocation] = useState(false);
+  const [locationMessage, setLocationMessage] = useState("");
+  const locationRequest = useRef(0);
+  useEffect(() => () => { ++locationRequest.current; }, []);
+  const locationEdited = useRef(false);
+  function changeLocation(next: PostLocation | null) { ++locationRequest.current; setLocating(false); locationEdited.current = true; setLocationMessage(""); setLocation(next); change?.(text, selected, attachments, next); }
+  async function requestLocation() {
+    const request = ++locationRequest.current; setLocating(true); setLocationMessage("");
+    try {
+      const result = await bridge.currentLocation();
+      if (request !== locationRequest.current || pending.current) return;
+      if (result.location) { changeLocation(result.location); setShowLocation(false); }
+      else setLocationMessage(locationStatusMessage(result.status));
+    } catch (e) { if (request === locationRequest.current) setLocationMessage(String(e)); }
+    finally { if (request === locationRequest.current) setLocating(false); }
+  }
+  const [attachments, setAttachments] = useState(initial.attachments || []);
+  const [importing, setImporting] = useState(false);
+  const [mediaToolbar, setMediaToolbar] = useState<HTMLSpanElement | null>(null);
+  // Pins belong to the entire edit session, including the discard-confirmation screen.
+  const stagedMedia = useRef<string[]>([]);
+  useEffect(() => () => { void bridge.releaseMedia({ ids: stagedMedia.current }); }, []);
   const pending = useRef(false);
   const editor = useEditor({
     extensions: [StarterKit.configure({ link: { openOnClick: false, protocols: ["http", "https"] } }), Markdown],
@@ -298,21 +343,22 @@ export function Editor({
     onUpdate: ({ editor: current }) => {
       const value = current.getMarkdown();
       setText(value);
-      change?.(value, selected);
+      change?.(value, selected, attachments);
       setCursorText({ text: current.state.selection.$from.parent.textContent, offset: current.state.selection.$from.parentOffset });
     },
     onSelectionUpdate: ({ editor: current }) => setCursorText({ text: current.state.selection.$from.parent.textContent, offset: current.state.selection.$from.parentOffset }),
   });
-  useEffect(() => { editor?.setEditable(!busy); }, [editor, busy]);
+  // Editability changes are UI state, not draft edits (especially during exit).
+  useEffect(() => { editor?.setEditable(!busy && !importing, false); }, [editor, busy, importing]);
   const inline = hashtags(text), active = activeHashtag(cursorText.text, cursorText.offset);
   function update(value: string, ids = selected) {
     setText(value);
     setSelected(ids);
     if (editor && editor.getMarkdown() !== value) editor.commands.setContent(value, { contentType: "markdown", emitUpdate: false });
-    change?.(value, ids);
+    change?.(value, ids, attachments);
   }
   function applyFormat(kind: Format) {
-    if (!editor || busy) return;
+    if (!editor || busy || importing) return;
     const chain = editor.chain().focus();
     if (kind === "bold") chain.toggleBold().run();
     else if (kind === "italic") chain.toggleItalic().run();
@@ -327,10 +373,10 @@ export function Editor({
     );
   }
   function requestClose() {
-    if (pending.current) return;
+    if (pending.current || importing) return;
     if (
       !capture &&
-      (text !== initial.text ||
+      (locationEdited.current || text !== initial.text || attachments.map(a => a.id).join() !== (initial.attachments || []).map(a => a.id).join() ||
         [
           ...new Set([
             ...selected,
@@ -360,7 +406,8 @@ export function Editor({
     setBusy(true);
     setError("");
     try {
-      await save(text, selected);
+      ++locationRequest.current;
+      await save(text, selected, attachments, locationEdited.current ? location ?? null : undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save. Try again.");
     } finally {
@@ -408,19 +455,23 @@ export function Editor({
       ) : (
         <>
           <EditorContent editor={editor} />
-          <div className="composer-tools">
-            <button type="button" aria-label="Text formatting" aria-expanded={showFormatting}
-              disabled={busy} onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setShowFormatting(!showFormatting)}>Aa</button>
-          </div>
-          {showFormatting && (
+          {(location || locating || locationMessage) && <p className="composer-location-status" role="status">{locating ? "Finding location…" : locationMessage || (location ? locationLabel(location) : "")}</p>}
+          <Presence>{showLocation && location && <Disclosure><div className="location-editor">
+            <label>Place name <input maxLength={500} disabled={busy} value={location.userLabel || ""} placeholder="Optional place name" onChange={e => changeLocation({ ...location, userLabel: e.target.value })} /></label>
+            <button disabled={busy || locating} onClick={() => void requestLocation()}>Refresh location</button>
+            <button disabled={busy} onClick={() => { changeLocation(null); setShowLocation(false); }}>Remove location</button>
+          </div></Disclosure>}</Presence>
+          <AttachmentEditor toolbar={mediaToolbar} attachments={attachments} disabled={busy || importing} report={setError} importing={setImporting} retain={ids => stagedMedia.current.push(...ids)} change={items => { setAttachments(items); change?.(text, selected, items); }} />
+          {importing && <p role="status">Importing media… Keep this screen open.</p>}
+          <Presence>{showFormatting && (
+            <Disclosure>
             <div className="format-toolbar" role="group" aria-label="Formatting options">
               {([
                 ["bold", "Bold", Bold], ["italic", "Italic", Italic],
                 ["bullet", "Bulleted list", List], ["number", "Numbered list", ListOrdered],
                 ["quote", "Quote", Quote],
               ] as const).map(([kind, label, Icon]) => (
-                <button key={kind} type="button" aria-label={label} title={label} disabled={busy}
+                <button key={kind} type="button" aria-label={label} title={label} disabled={busy || importing}
                   aria-pressed={editor?.isActive(({ bold: "bold", italic: "italic", bullet: "bulletList", number: "orderedList", quote: "blockquote" } as const)[kind]) ?? false}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => { applyFormat(kind); setShowFormatting(false); }}>
@@ -428,7 +479,8 @@ export function Editor({
                 </button>
               ))}
             </div>
-          )}
+            </Disclosure>
+          )}</Presence>
           {active && (
             <div className="suggestions" aria-label="Hashtag suggestions">
               {tags
@@ -471,7 +523,7 @@ export function Editor({
               )
               .map((t) => (
                 <button
-                  disabled={busy}
+                  disabled={busy || importing}
                   className="chip selected"
                   key={t.id}
                   aria-label={`Remove tag ${t.name}`}
@@ -502,17 +554,9 @@ export function Editor({
                   <PaperIcon name="close" size={14} />
                 </button>
               ))}
-            <button
-              disabled={busy}
-              className="chip"
-              aria-expanded={showTags}
-              onClick={() => setShowTags(!showTags)}
-            >
-              <PaperIcon name="plus" size={15} />
-              Add tag
-            </button>
           </div>
-          {showTags && (
+          <Presence>{showTags && (
+            <Disclosure>
             <div className="tag-selector">
               <input
                 aria-label="Find or create tag"
@@ -534,7 +578,7 @@ export function Editor({
                       );
                     return (
                       <button
-                        disabled={busy}
+                        disabled={busy || importing}
                         aria-pressed={chosen}
                         className="menu-row"
                         key={t.id}
@@ -554,7 +598,7 @@ export function Editor({
                       t.name.toLowerCase() === tagSearch.trim().toLowerCase(),
                   ) && (
                     <button
-                      disabled={busy}
+                      disabled={busy || importing}
                       className="menu-row"
                       onClick={() => void create()}
                     >
@@ -564,16 +608,24 @@ export function Editor({
                   )}
               </div>
             </div>
-          )}
+            </Disclosure>
+          )}</Presence>
           {error && (
             <p className="error" role="alert">
               {error}{" "}
-              <button onClick={() => void submit()} disabled={busy}>
+              <button onClick={() => void submit()} disabled={busy || importing}>
                 Retry save
               </button>
             </p>
           )}
-          <div className="action-row">
+          <div className="composer-bar">
+            <span className="composer-media-action" ref={setMediaToolbar} />
+            <button className="composer-icon" type="button" aria-label="Text formatting" aria-expanded={showFormatting} disabled={busy || importing} onMouseDown={e => e.preventDefault()} onClick={() => { setShowFormatting(!showFormatting); setShowTags(false); setShowLocation(false); }}>Aa</button>
+            <button className="composer-icon" type="button" aria-label="Add tag" aria-expanded={showTags} disabled={busy || importing} onClick={() => { setShowTags(!showTags); setShowFormatting(false); setShowLocation(false); }}><Hash size={22} /></button>
+            <button className={"composer-icon location-toggle" + (location ? " has-location" : "")} type="button" aria-label={locating ? "Finding location" : "Post location"} aria-expanded={showLocation} disabled={busy || importing || locating} onClick={() => {
+              setShowFormatting(false); setShowTags(false);
+              if (location) setShowLocation(!showLocation); else void requestLocation();
+            }}>{locating ? <LoaderCircle className="location-spinner" size={22} /> : <MapPin size={22} />}</button>
             {capture && discard ? (
               <details>
                 <summary aria-label="Draft actions">
@@ -591,17 +643,10 @@ export function Editor({
                   Discard draft
                 </button>
               </details>
-            ) : (
-              <button
-                disabled={busy}
-                className="secondary"
-                onClick={requestClose}
-              >
-                Cancel
-              </button>
-            )}
+            ) : null}
+            <span className="composer-spacer" />
             <button
-              disabled={busy || !text.trim()}
+              disabled={busy || importing || (!text.trim() && !attachments.length)}
               className="primary"
               onClick={() => void submit()}
             >

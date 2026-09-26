@@ -37,7 +37,7 @@ class NativeBridgeTest {
         val text = "A thought doesn't have to become something to be worth keeping."
         repository { repo -> repo.commitDraft(repo.draft("bridge-test", null, null).copy(text = text)) }
         ActivityScenario.launch<MainActivity>(Intent(context, MainActivity::class.java)).use { scenario ->
-            until(scenario, "document.body.innerText", "museamo")
+            until(scenario, "document.body.innerText", "MUSEAMO")
             until(scenario, "document.body.innerText", "worth keeping")
             assertFalse(js(scenario, "document.body.innerText").contains("Preview ·"))
             js(scenario, "window.Capacitor.nativePromise('Museamo','library',{}).then(r=>window.__bridgeResult=JSON.stringify(r)).catch(e=>window.__bridgeResult='ERROR:'+e.message); 'started'")

@@ -31,9 +31,13 @@ object Backup {
         return v.toLong()
     }
     fun entry(o: JSONObject): EntryRow {
-        val text = str(o, "text"); require(text.isNotBlank()) { "An entry has no text." }
+        val text = str(o, "text")
+        val attachments = if (o.has("attachmentIds")) o.getJSONArray("attachmentIds") else o.optJSONArray("attachments")?.let { a -> JSONArray((0 until a.length()).map { a.getJSONObject(it).getString("id") }) } ?: JSONArray()
+        val media = (0 until attachments.length()).map { i -> attachments.getString(i).also { require(UUID.fromString(it).toString() == it) { "Invalid attachment ID." } } }
+        require(media.size <= 10 && media.distinct().size == media.size) { "Invalid attachments." }
+        require(text.isNotBlank() || media.isNotEmpty()) { "An entry has no text or attachments." }
         val star = o.get("starred"); require(star is Boolean) { "Invalid starred state." }
-        return EntryRow(id(o, "id"), text, time(o, "createdAt"), time(o, "updatedAt"), star, jsonIds(tagIds(o)), nullableId(o, "profileId"))
+        return EntryRow(id(o, "id"), text, time(o, "createdAt"), time(o, "updatedAt"), star, jsonIds(tagIds(o)), nullableId(o, "profileId"), jsonIds(media), PostLocation.parse(o.opt("location")))
     }
     fun profile(o: JSONObject): ProfileRow {
         val label = str(o, "label"); require(label.isNotBlank() && label.length <= 80) { "Invalid profile label." }
@@ -41,13 +45,14 @@ object Backup {
         return ProfileRow(id(o, "id"), label, mode, jsonIds(tagIds(o)), nullableId(o, "selectedTagId"))
     }
     private fun objects(o: JSONObject, key: String): List<JSONObject> = o.getJSONArray(key).let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
-    fun import(repo: Repository, text: String) {
+    fun import(repo: Repository, text: String, withMedia: Boolean = false) {
         require(text.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "Backup is larger than 25 MB." }
         val root = JSONObject(text)
-        require(root.get("format") == "museamo" && root.get("version") == 1) { "Unsupported backup. Choose a Museamo version 1 JSON export." }
+        require(root.get("format") == "museamo" && root.get("version") in (if (withMedia) listOf(2, 3) else listOf(1))) { "Unsupported backup. Choose a Museamo version 1 JSON export." }
         val tags = objects(root, "tags").map { o -> val name = str(o, "name"); require(name == name.trim() && name.isNotEmpty() && name.length <= 80) { "Invalid tag name." }; TagRow(id(o, "id"), name) }
         val profiles = objects(root, "profiles").map { profile(it) }
-        val entries = objects(root, "entries").map { entry(it) }
+        val entries = objects(root, "entries").map { entry(if (root.getInt("version") < 3) JSONObject(it.toString()).apply { remove("location") } else it) }
+        require(entries.all { e -> ids(e.mediaIds).all { withMedia && repo.dao.media(it) != null } }) { "Backup contains missing media. Import the complete archive." }
         require(tags.map { it.id }.distinct().size == tags.size && profiles.map { it.id }.distinct().size == profiles.size && entries.map { it.id }.distinct().size == entries.size) { "Backup contains duplicate IDs." }
         require(tags.map { it.normalizedName }.distinct().size == tags.size) { "Backup contains duplicate tag names." }
         val tagSet = tags.map { it.id }.toSet(); val profileSet = profiles.map { it.id }.toSet()
