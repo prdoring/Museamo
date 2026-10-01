@@ -20,14 +20,14 @@ class TagPickerActivity : NativeScreen() {
         work({ repo -> repo.dao.tags() to requireNotNull(repo.dao.profile(profileId)) { "Configure this widget again." } }) { (tags, profile) ->
             fun render() {
                 list.removeAllViews()
-                fun option(id: String?, name: String) { list.addView(button(name) {
+                fun option(id: String?, name: CharSequence, accessible: String = name.toString()) { list.addView(button(name) {
                     if (!saving) {
                     saving = true
                     work({ repo -> val current = requireNotNull(repo.dao.profile(profileId)); repo.saveProfile(current.copy(selectedTagId = id)); Store.changed(this) }) { finish() }
                     }
-                }.apply { if (id == profile.selectedTagId) { selected(this); glyph(this, R.drawable.paper_check, R.color.widget_selection_text) } }) }
+                }.apply { contentDescription = accessible; if (id == profile.selectedTagId) { selected(this); glyph(this, R.drawable.paper_check, R.color.widget_selection_text) } }) }
                 option(null, "No tag")
-                tags.filter { it.name.contains(search.text.toString(), ignoreCase = true) }.forEach { option(it.id, it.name) }
+                tags.filter { it.name.contains(search.text.toString(), ignoreCase = true) }.forEach { option(it.id, it.displayLabel(this, if (it.id == profile.selectedTagId) R.color.widget_selection_text else R.color.widget_text), it.accessibleLabel()) }
             }
             search.addTextChangedListener(object : TextWatcher { override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}; override fun afterTextChanged(s: Editable?) { render() }; override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {} })
             render()

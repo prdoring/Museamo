@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { bridge, filterEntries, locationLabel, preview, type Entry, type PostLocation } from "./data";
+import labels from "../test-fixtures/location-labels.json";
 
 const location: PostLocation = { latitude: 0, longitude: 0, token: "test", capturedAt: 1 };
 describe("saved locations", () => {
@@ -8,13 +9,11 @@ describe("saved locations", () => {
     const result = await bridge.currentLocation();
     expect(result.location).not.toBeNull();
   });
-  it("falls back through user label, feature, address, locality, then coordinates", () => {
-    expect(locationLabel(location)).toBe("Saved location");
-    expect(locationLabel({ ...location, locality: "Town" })).toBe("Town");
-    expect(locationLabel({ ...location, locality: "Town", address: "10 Main Street" })).toBe("10 Main Street");
-    expect(locationLabel({ ...location, address: "10 Main Street", name: "Park" })).toBe("Park");
-    expect(locationLabel({ ...location, name: "Park", userLabel: "My spot" })).toBe("My spot");
-    expect(locationLabel({ ...location, name: "Park", userLabel: "  " })).toBe("Park");
+  it.each(labels)("formats $label without changing saved metadata", fixture => {
+    const value = Object.freeze({ ...location, ...fixture.location });
+    const before = JSON.stringify(value);
+    expect(locationLabel(value)).toBe(fixture.label);
+    expect(JSON.stringify(value)).toBe(before);
   });
   it("retains capture coordinates in resumed drafts, updates, and Undo", async () => {
     await bridge.setLocationEnabled({ enabled: true });
@@ -41,11 +40,24 @@ describe("saved locations", () => {
     expect((await bridge.getEntry({ id: preview.save(resumed) })).entry!.location).toBeNull();
   });
   it("filters by name and location without excluding zero coordinates", () => {
-    const entry: Entry = { id: "one", text: "Lunch", createdAt: 1, updatedAt: 1, starred: true, tagIds: ["food"], profileId: null, location: { ...location, userLabel: "Cafe", locality: "Town" } };
+    const entry: Entry = { id: "one", text: "Lunch", createdAt: 1, updatedAt: 1, starred: true, completed: false, tagIds: ["food"], profileId: null, location: { ...location, userLabel: "Cafe", locality: "Town" } };
     expect(filterEntries([entry], { located: true, search: "cafe", starred: true, tagId: "food" })).toEqual([entry]);
     expect(filterEntries([entry], { search: "town" })).toEqual([entry]);
     expect(filterEntries([entry], { tagId: "other" })).toEqual([]);
     expect(filterEntries([{ ...entry, location: null }], { located: true })).toEqual([]);
+  });
+  it("keeps full addresses and country metadata through editing, Undo, and search", async () => {
+    const savedLocation = { ...location, name: "Museum", city: "Antwerp", region: "Flanders", country: "Belgium", countryCode: "BE", address: "123 Museumstraat, 2000 Antwerp, Belgium" };
+    const { draft } = await bridge.getDraft({});
+    const id = preview.save({ ...draft, text: "Keep this memory", location: savedLocation });
+    await bridge.updateEntry({ id, text: "Keep this memory, edited", tagIds: [] });
+    const entry = (await bridge.getEntry({ id })).entry!;
+    expect(entry.location).toEqual(savedLocation);
+    expect(locationLabel(entry.location!)).toBe("Museum, Antwerp, Belgium");
+    for (const search of ["Museumstraat", "2000", "Belgium", "Flanders"]) expect((await bridge.queryEntries({ search })).entries).toEqual([entry]);
+    await bridge.deleteEntry({ id });
+    await bridge.restoreEntry({ entry });
+    expect((await bridge.getEntry({ id })).entry).toEqual(entry);
   });
   it("paginates located posts independently of unlocated posts", async () => {
     for (let i = 0; i < 5; i++) {

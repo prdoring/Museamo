@@ -41,12 +41,51 @@ class LocationStorageTest {
         val address = Address(Locale.US).apply { locality = "Town"; adminArea = "Region" }
         assertEquals("Town, Region", PostLocation.label(PostLocation.enrich(raw, address)))
         address.thoroughfare = "Main Street"; address.featureName = "10"; address.setAddressLine(0, "10 Main Street")
-        assertEquals("10 Main Street", PostLocation.label(PostLocation.enrich(raw, address)))
+        assertEquals("Town, Region", PostLocation.label(PostLocation.enrich(raw, address)))
         address.featureName = "Museum"
         val enriched = PostLocation.enrich(raw, address)
-        assertEquals("Museum", PostLocation.label(enriched))
+        assertEquals("Museum, Town, Region", PostLocation.label(enriched))
         assertEquals(0.0, JSONObject(enriched).getDouble("latitude"), 0.0)
-        assertEquals("My place", PostLocation.label(JSONObject(enriched).put("userLabel", "My place").toString()))
+        assertEquals("My place, Town, Region", PostLocation.label(JSONObject(enriched).put("userLabel", "My place").toString()))
+    }
+    @Test fun shortLabelsRetainTheFullAddressAndStructuredPlaceFields() {
+        val address = Address(Locale.US).apply {
+            featureName = "Trader Joe's"; locality = "Portland"; adminArea = "Oregon"; countryName = "United States"; countryCode = "US"
+            subThoroughfare = "123"; thoroughfare = "Main Street"; postalCode = "97205"
+            setAddressLine(0, "123 Main Street, Portland, OR 97205, USA")
+        }
+        val full = address.getAddressLine(0)
+        val enriched = PostLocation.parse(JSONObject(PostLocation.enrich(location(), address)))!!
+        assertEquals("Trader Joe's, Portland OR", PostLocation.label(enriched))
+        assertEquals(full, JSONObject(enriched).getString("address"))
+        assertEquals("Portland", JSONObject(enriched).getString("city"))
+        assertEquals("Oregon", JSONObject(enriched).getString("region"))
+        assertEquals("US", JSONObject(enriched).getString("countryCode"))
+        assertTrue(PostLocation.search(enriched).contains(full))
+        address.featureName = full
+        assertEquals("Portland OR", PostLocation.label(PostLocation.enrich(location(), address)))
+        address.featureName = "123 Main Street"
+        assertEquals("Portland OR", PostLocation.label(PostLocation.enrich(location(), address)))
+        address.featureName = "Museum"; address.locality = "Antwerp"; address.adminArea = "Flanders"; address.countryCode = "BE"; address.countryName = "Belgium"
+        address.setAddressLine(0, "123 Museumstraat, 2000 Antwerp, Belgium")
+        val international = PostLocation.parse(JSONObject(PostLocation.enrich(location(), address)))!!
+        assertEquals("Museum, Antwerp, Belgium", PostLocation.label(international))
+        assertEquals(address.getAddressLine(0), JSONObject(international).getString("address"))
+        val entry = repo.commitDraft(repo.draft("app", null, null).copy(text = "Keep this memory", location = international))
+        val expected = repo.dao.entry(entry.id)!!
+        val archive = ByteArrayOutputStream().also { MediaBackup.export(context, repo, it) }.toByteArray()
+        val freshDb = Room.inMemoryDatabaseBuilder(context, MuseamoDatabase::class.java).build()
+        try {
+            val fresh = Repository(freshDb)
+            repeat(2) { MediaBackup.import(context, fresh, ByteArrayInputStream(archive)) }
+            assertEquals(listOf(expected), fresh.dao.entries())
+            fresh.edit(entry.id, "Edited memory", emptyList())
+            assertEquals(international, fresh.dao.entry(entry.id)!!.location)
+            val saved = fresh.dao.entry(entry.id)!!
+            fresh.delete(saved.id); fresh.restore(saved)
+            assertEquals(saved, fresh.dao.entry(saved.id))
+            assertEquals(listOf(saved), fresh.dao.page("Museumstraat", false, "", 50, null, ""))
+        } finally { freshDb.close() }
     }
     @Test fun draftUndoAndLateNamingRespectRemovalAndManualEdits() {
         val raw = location(); val enriched = JSONObject(raw).put("locality", "Town").toString()
@@ -80,7 +119,7 @@ class LocationStorageTest {
         assertEquals(2, repo.dao.entries().count { it.location == null })
     }
     @Test fun rejectsInvalidCoordinatesAndTypes() {
-        for (value in listOf(JSONObject(location()).put("latitude", 91), JSONObject(location()).put("longitude", -181), JSONObject(location()).put("latitude", "0"), JSONObject(location()).put("accuracy", -1))) {
+        for (value in listOf(JSONObject(location()).put("latitude", 91), JSONObject(location()).put("longitude", -181), JSONObject(location()).put("latitude", "0"), JSONObject(location()).put("accuracy", -1), JSONObject(location()).put("country", 7), JSONObject(location()).put("city", "x".repeat(501)))) {
             try { PostLocation.parse(value); fail("Invalid location accepted") } catch (_: IllegalArgumentException) {}
         }
     }

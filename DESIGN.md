@@ -33,6 +33,9 @@ Theme values live in src/styles.css and Android day/night resources; src/paper.c
 ## Interaction rules
 
 - Stream, Gems, Tags; newest first. Search stays scoped to the current view.
+- Enable Checklist with a single switch in the tag editor. Checklist feeds use compact rows: a 48px checkbox target beside the text, an overflow menu on the right, and no repeated chip for the current category. The menu holds timestamp, location, and Gems actions. Other tags and attachments remain visible. Unchecked items come first, newest first in each group; small Checked/Unchecked headings share a line with the first date, with date dividers for subsequent days. Other views retain chronological order and their existing post metadata. Eligible items have one shared checkbox across the app; completed body text is crossed out, while attachments and actions stay usable. Widget tags show a small checklist-list icon distinct from selection ticks.
+- Mixed feeds place the checklist control in the metadata action row beside Gems and the menu. Text, locations, tags, and attachments share the same left edge and full content width for every entry; only dedicated Checklist categories use an indented checkbox column.
+- Stream has one checklist-icon toggle button in its existing toolbar, using the same ListChecks icon as Checklist categories. Its accessible label is “To-dos only”; a filled selected state and `aria-pressed` indicate filtering. The filter keeps Stream’s chronological order and includes both checked and unchecked items; it combines with text search and adds no extra filter row.
 - A persistent bottom message bar opens capture. Do not focus the keyboard while browsing.
 - Post text is selectable. Hashtags and tag chips open tag feeds; ordinary text never enters edit mode.
 - Star is optimistic with rollback/retry. Post overflow contains Edit, Copy text, Delete. Each deletion has its own Undo until dismissed during the session.

@@ -291,7 +291,7 @@ class CaptureActivity : NativeScreen() {
         val token = Hashtags.active(input.text.toString(), input.selectionStart)
         suggestionScroll.visibility = if (token == null) View.GONE else View.VISIBLE
         if (token == null) return
-        tags.filter { it.name.startsWith(token.query, true) }.take(8).forEach { tag -> suggestions.addView(button("# ${tag.name}") { complete(tag.name, token) }) }
+        tags.filter { it.name.startsWith(token.query, true) }.take(8).forEach { tag -> suggestions.addView(button(android.text.TextUtils.concat("# ", tag.displayLabel(this))) { complete(tag.name, token) }.apply { contentDescription = tag.accessibleLabel() }) }
         if (token.query.isNotBlank() && tags.none { it.name.equals(token.query.trim(), true) }) suggestions.addView(button("Use new tag “${token.query.trim()}”") { complete(token.query.trim(), token) })
     }
     private fun complete(name: String, token: Hashtags.Token) {
@@ -304,14 +304,16 @@ class CaptureActivity : NativeScreen() {
         val explicit = ids(draft?.tagIds ?: "[]")
         val inline = Hashtags.names(input.text.toString())
         val names = (tags.filter { it.id in explicit }.map { it.name } + inline).distinctBy { it.lowercase(java.util.Locale.ROOT) }
-        names.forEach { name -> chips.addView(button("# $name") {
+        names.forEach { name ->
+            val displayTag = tags.find { it.name.equals(name, true) }
+            chips.addView(button(android.text.TextUtils.concat("# ", displayTag?.displayLabel(this, R.color.widget_selection_text) ?: name)) {
             if (!committing) {
                 val tag = tags.find { it.name.equals(name, true) }
                 draft = draft?.copy(tagIds = jsonIds(explicit - listOfNotNull(tag?.id)))
                 val position = input.selectionStart
                 input.removeHashtag(name); input.setSelection(position.coerceIn(0, input.length())); updateChips(); persist()
             }
-        }.apply { contentDescription = "Remove tag $name"; selected(this); glyph(this, R.drawable.paper_close, R.color.widget_selection_text); isEnabled = !committing }, LinearLayout.LayoutParams(-2, dp(48)).apply { marginEnd = dp(4) }) }
+        }.apply { contentDescription = "Remove tag ${displayTag?.accessibleLabel() ?: name}"; selected(this); glyph(this, R.drawable.paper_close, R.color.widget_selection_text); isEnabled = !committing }, LinearLayout.LayoutParams(-2, dp(48)).apply { marginEnd = dp(4) }) }
         (chips.parent as View).visibility = if (names.isEmpty()) View.GONE else View.VISIBLE
     }
     private fun chooseTags() {
@@ -332,11 +334,11 @@ class CaptureActivity : NativeScreen() {
                 val inline = Hashtags.names(input.text.toString())
                 tags.filter { it.name.contains(search.text.toString(), true) }.forEach { tag ->
                     val checked = tag.id in selected || inline.any { it.equals(tag.name, true) }
-                    list.addView(button((if (checked) "✓  " else "#  ") + tag.name) {
+                    list.addView(button(android.text.TextUtils.concat(if (checked) "✓  " else "#  ", tag.displayLabel(this, if (checked) R.color.widget_selection_text else R.color.widget_text))) {
                         draft = draft?.copy(tagIds = jsonIds(if (checked) selected - tag.id else selected + tag.id))
                         if (checked) { input.removeHashtag(tag.name); input.setSelection(input.length()) }
                         updateChips(); persist(); render()
-                    }.apply { if (checked) { selected(this); glyph(this, R.drawable.paper_check, R.color.widget_selection_text) } })
+                    }.apply { contentDescription = tag.accessibleLabel() + if (checked) ", selected" else ""; if (checked) { selected(this); glyph(this, R.drawable.paper_check, R.color.widget_selection_text) } })
                 }
                 val name = search.text.toString().trim()
                 if (name.isNotEmpty() && tags.none { it.name.equals(name, true) }) list.addView(button("Create “$name”") {

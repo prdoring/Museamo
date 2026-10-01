@@ -7,6 +7,7 @@
    <TextView android:id="@+id/widget_prompt" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone"/>
   </LinearLayout>
   <LinearLayout android:id="@+id/widget_picker" android:layout_width="wrap_content" android:layout_height="match_parent" android:orientation="horizontal" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="4dp" android:visibility="gone">
+   <ImageView android:id="@+id/widget_picker_type" android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/tag_checklist" android:visibility="gone" android:importantForAccessibility="no" android:contentDescription="@null"/>
    <TextView android:id="@+id/widget_picker_text" android:layout_width="wrap_content" android:layout_height="match_parent" android:maxWidth="100dp" android:gravity="center_vertical" android:text="@string/no_tag" android:textColor="@color/widget_text" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/>
    <ImageView android:id="@+id/widget_picker_arrow" android:layout_width="20dp" android:layout_height="20dp" android:padding="3dp" android:src="@drawable/paper_down" android:importantForAccessibility="no" android:contentDescription="@null"/>
   </LinearLayout>

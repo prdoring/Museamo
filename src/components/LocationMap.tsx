@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import { FormattedText } from "./FormattedText";
+import { ChecklistToggle } from "./Checklist";
 import { reducedMotion } from "./Motion";
 import "leaflet/dist/leaflet.css";
-import { bridge, locationLabel, type Entry, type Tag } from "../data";
+import { bridge, isChecklistEntry, locationLabel, type Entry, type Tag } from "../data";
 
 export function groupLocations(entries: Entry[], project: (lat: number, lng: number) => { x: number; y: number }) {
   const groups = new Map<string, Entry[]>();
@@ -16,20 +17,24 @@ export function groupLocations(entries: Entry[], project: (lat: number, lng: num
   return [...groups.values()];
 }
 
-export function LocationMap({ query = "", tags = [], focus, edit }: {
+export function LocationMap({ query = "", tags = [], focus, edit, complete, pendingCompletions }: {
   query?: string; tags?: Tag[]; focus?: Entry; edit: (entry: Entry) => void;
+  complete: (entry: Entry) => Promise<void>; pendingCompletions: ReadonlySet<string>;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
+  const fittedLocations = useRef("");
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [selected, setSelected] = useState<Entry[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const changingCompletion = useRef(new Set<string>());
+  const [retryCompletion, setRetryCompletion] = useState<Entry>();
   const [starred, setStarred] = useState(false), [tagId, setTagId] = useState("");
   const [loading, setLoading] = useState(false), [error, setError] = useState("");
   const [tileError, setTileError] = useState(false), [revision, setRevision] = useState(0);
   useEffect(() => {
-    if (focus) { setEntries([focus]); setSelected([focus]); return; }
+    if (focus) { setEntries([focus]); setSelected([focus.id]); return; }
     let disposed = false;
-    setEntries([]); setSelected([]); setLoading(true); setError("");
+    setLoading(true); setError("");
     void (async () => {
       try {
         const all: Entry[] = [];
@@ -47,9 +52,10 @@ export function LocationMap({ query = "", tags = [], focus, edit }: {
     })();
     return () => { disposed = true; };
   }, [focus, query, starred, tagId, revision]);
+  useEffect(() => { setSelected([]); }, [query, starred, tagId]);
   useEffect(() => {
     let disposed = false;
-    const listener = bridge.addListener("dataChanged", () => { if (!disposed) setRevision(v => v + 1); });
+    const listener = bridge.addListener("dataChanged", () => { if (!disposed && !changingCompletion.current.size) setRevision(v => v + 1); });
     return () => { disposed = true; void listener.then(h => h.remove()); };
   }, []);
   useEffect(() => {
@@ -57,6 +63,7 @@ export function LocationMap({ query = "", tags = [], focus, edit }: {
     const animate = !reducedMotion();
     const instance = L.map(container.current, { zoomAnimation: animate, fadeAnimation: animate, markerZoomAnimation: animate }).setView([20, 0], 2);
     map.current = instance;
+    fittedLocations.current = "";
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
@@ -76,13 +83,29 @@ export function LocationMap({ query = "", tags = [], focus, edit }: {
         L.marker([location.latitude, location.longitude], {
           title: group.length > 1 ? `${group.length} posts` : locationLabel(location),
           icon: L.divIcon({ className: "location-pin", html: `<span>${group.length > 1 ? group.length : "●"}</span>`, iconSize: [36, 36] }),
-        }).on("click", () => setSelected(group)).addTo(layer);
+        }).on("click", () => setSelected(group.map(e => e.id))).addTo(layer);
       }
     };
-    if (entries.length) instance.fitBounds(L.latLngBounds(entries.map(e => [e.location!.latitude, e.location!.longitude])), { maxZoom: focus ? 16 : 14, padding: [30, 30], animate: !reducedMotion() });
+    const locations = entries.map(e => `${e.id}:${e.location!.latitude}:${e.location!.longitude}`).join("|");
+    if (entries.length && locations !== fittedLocations.current) {
+      fittedLocations.current = locations;
+      instance.fitBounds(L.latLngBounds(entries.map(e => [e.location!.latitude, e.location!.longitude])), { maxZoom: focus ? 16 : 14, padding: [30, 30], animate: !reducedMotion() });
+    }
     render(); instance.on("zoomend", render);
     return () => { instance.off("zoomend", render); layer.remove(); };
   }, [entries, focus]);
+  async function toggle(entry: Entry) {
+    if (loading || pendingCompletions.has(entry.id) || changingCompletion.current.has(entry.id)) return;
+    changingCompletion.current.add(entry.id);
+    setError(""); setRetryCompletion(undefined);
+    setEntries(old => old.map(e => e.id === entry.id ? { ...e, completed: !entry.completed } : e));
+    try { await complete(entry); }
+    catch (e) {
+      setEntries(old => old.map(item => item.id === entry.id ? { ...item, completed: entry.completed } : item));
+      setError(e instanceof Error ? e.message : String(e)); setRetryCompletion(entry);
+    } finally { changingCompletion.current.delete(entry.id); }
+  }
+  const selectedEntries = entries.filter(e => selected.includes(e.id));
   return <section className="location-view" aria-label="Post map">
     {!focus && <div className="map-filters">
       <label><input type="checkbox" checked={starred} onChange={e => setStarred(e.target.checked)} /> Gems only</label>
@@ -90,13 +113,14 @@ export function LocationMap({ query = "", tags = [], focus, edit }: {
     </div>}
     <div ref={container} className="location-map" aria-label="Map of saved locations" />
     {tileError && <p role="status">Map tiles are unavailable. Your saved locations are listed below.</p>}
-    {error && <p role="alert">{error} <button onClick={() => setRevision(v => v + 1)}>Retry</button></p>}
+    {error && <p role="alert">{error} <button onClick={() => retryCompletion ? void toggle(retryCompletion) : setRevision(v => v + 1)}>Retry</button></p>}
     {loading && <p role="status">Loading located posts…</p>}
     {!loading && !entries.length && <p>No located posts match. Enable automatic location in Settings to capture locations on new posts.</p>}
     {selected.length > 0 && !focus && <button onClick={() => setSelected([])}>Show all {entries.length} located posts</button>}
-    <div className="map-posts">{(selected.length ? selected : entries).map(entry => <article key={entry.id}>
+    <div className="map-posts">{(selectedEntries.length ? selectedEntries : entries).map(entry => <article key={entry.id} data-entry-id={entry.id}>
+      {isChecklistEntry(entry, tags) && <ChecklistToggle entry={entry} pending={loading || pendingCompletions.has(entry.id)} change={e => void toggle(e)} />}
       <strong>{locationLabel(entry.location!)}</strong>
-      <div className="rich-text"><FormattedText text={entry.text || "Photo/video post"} tags={[]} openTag={() => {}} report={setError} /></div>
+      <div className={"rich-text " + (isChecklistEntry(entry, tags) && entry.completed ? "checklist-completed" : "")}><FormattedText text={entry.text || "Photo/video post"} tags={[]} openTag={() => {}} report={setError} /></div>
       <small>{entry.location!.latitude.toFixed(5)}, {entry.location!.longitude.toFixed(5)}{entry.location!.accuracy !== undefined ? ` · accuracy ~${Math.round(entry.location!.accuracy!)} m` : ""}</small>
       <div className="action-row"><button onClick={() => edit(entry)}>Edit post</button><button onClick={() => void bridge.openLocation({ latitude: entry.location!.latitude, longitude: entry.location!.longitude }).catch(e => setError(String(e)))}>Open in maps</button></div>
     </article>)}</div>

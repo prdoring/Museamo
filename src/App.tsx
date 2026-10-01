@@ -2,6 +2,7 @@ import { Presence, PageMotion, Disclosure } from "./components/Motion";
 import { PaperIcon } from "./components/PaperIcon";
 import { useEffect, useRef, useState } from "react";
 import {
+  ListChecks,
   MoreHorizontal,
   Search,
 } from "lucide-react";
@@ -22,7 +23,7 @@ import { Navigation, type Tab } from "./components/Navigation";
 import { Feed } from "./components/Feed";
 import { Settings } from "./components/Settings";
 import { SearchField, TagList } from "./components/LibraryViews";
-type View = { tab: Tab; tagId?: string; query: string; settings?: boolean };
+type View = { tab: Tab; tagId?: string; query: string; settings?: boolean; checklistOnly?: boolean };
 export default function App() {
   const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system");
   useEffect(() => {
@@ -46,6 +47,8 @@ export default function App() {
     [notice, setNotice] = useState(""),
     [deleted, setDeleted] = useState<Entry[]>([]),
     [showStream, setShowStream] = useState(false);
+  const [pendingCompletions, setPendingCompletions] = useState<ReadonlySet<string>>(new Set());
+  const completionRequests = useRef(new Set<string>());
   const [retry, setRetry] = useState<() => void>();
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -55,35 +58,45 @@ export default function App() {
     selfMutation = useRef(0),
     composing = useRef(false),
     pendingStars = useRef(new Set<string>()),
-    loadingMore = useRef(false);
+    loadingRequest = useRef(0);
+  const paginationValid = useRef(false);
   const positions = useRef(new Map<string, number>()),
     cache = useRef(new Map<string, { entries: Entry[]; more: boolean }>());
   const key = (v: View) =>
-    `${v.settings ? "settings" : v.tab}/${v.tagId || ""}/${v.query}`;
+    `${v.settings ? "settings" : v.tab}/${v.tagId || ""}/${v.query}/${v.checklistOnly ? "todos" : "all"}`;
   const tag = library.tags.find((t) => t.id === view.tagId);
   const modal = !!mapFocus || !!editing || !!draft || !!tagEditor;
   async function refreshLibrary() {
     setLibrary(await bridge.library());
   }
-  async function load(append = false, keepPosition = false) {
-    if (append && loadingMore.current) return;
-    if (append) loadingMore.current = true;
+  async function load(append = false, keepPosition = false, movedId?: string) {
+    if (append && (!paginationValid.current || loadingRequest.current || completionRequests.current.size)) return;
     const request = ++version.current,
       current = viewRef.current;
+    loadingRequest.current = request;
+    if (!append) { paginationValid.current = false; setMore(false); }
     const last = append ? entriesRef.current.at(-1) : undefined;
-    if (!append && !keepPosition) setLoading(true);
+    const scroll = window.scrollY;
+    const anchor = keepPosition ? [...document.querySelectorAll<HTMLElement>("[data-entry-id]")]
+      .find(el => el.dataset.entryId !== movedId && el.getBoundingClientRect().bottom > 0) : undefined;
+    const anchorId = anchor?.dataset.entryId, anchorTop = anchor?.getBoundingClientRect().top;
+    setLoading(true);
     try {
-      const [page, lib] = await Promise.all([
-        bridge.queryEntries({
+      // Read the current type before choosing both the order and its cursor.
+      const lib = await bridge.library();
+      if (version.current !== request) return;
+      const checklist = lib.tags.some(t => t.id === current.tagId && t.type === "checklist");
+      const page = await bridge.queryEntries({
+          order: checklist ? "checklist" : "newest",
           starred: current.tab === "gems",
+          checklistOnly: current.tab === "stream" && !!current.checklistOnly,
           tagId: current.tagId,
           search: current.query,
-          limit: 50,
+          limit: !append && keepPosition ? Math.max(50, entriesRef.current.length) : 50,
           beforeTime: last?.createdAt,
           beforeId: last?.id,
-        }),
-        bridge.library(),
-      ]);
+          beforeCompleted: checklist ? last?.completed : undefined,
+        });
       if (version.current !== request) return;
       const next = append
         ? [
@@ -94,16 +107,22 @@ export default function App() {
           ]
         : page.entries;
       setEntries(next);
+      paginationValid.current = true;
       setMore(page.hasMore);
       setLibrary(lib);
       setNewThoughts(false);
       cache.current.set(key(current), { entries: next, more: page.hasMore });
+      if (keepPosition) requestAnimationFrame(() => {
+        if (version.current !== request) return;
+        const nextAnchor = anchorId ? document.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(anchorId)}"]`) : null;
+        window.scrollTo(0, nextAnchor && anchorTop !== undefined ? window.scrollY + nextAnchor.getBoundingClientRect().top - anchorTop : scroll);
+      });
       if (current.tagId && !lib.tags.some((t) => t.id === current.tagId))
         setView({ tab: "tags", query: "" });
     } catch (e) {
-      failure(e, () => void load(append, keepPosition));
+      if (version.current === request) failure(e, () => void load(append, keepPosition));
     } finally {
-      loadingMore.current = false;
+      if (loadingRequest.current === request) loadingRequest.current = 0;
       if (version.current === request) setLoading(false);
     }
   }
@@ -115,8 +134,10 @@ export default function App() {
   loadRef.current = load;
   useEffect(() => {
     ++version.current;
+    loadingRequest.current = 0;
     const existing = cache.current.get(key(view));
     if (existing) {
+      paginationValid.current = true;
       setEntries(existing.entries);
       setMore(existing.more);
       setLoading(false);
@@ -127,14 +148,16 @@ export default function App() {
     requestAnimationFrame(() =>
       window.scrollTo(0, positions.current.get(key(view)) || 0),
     );
-  }, [view.tab, view.tagId, view.query, view.settings]);
+  }, [view.tab, view.tagId, view.query, view.settings, view.checklistOnly]);
   useEffect(() => {
     let disposed = false;
     let remove: (() => Promise<void>) | undefined;
     function changed() {
       if (selfMutation.current || composing.current) return;
       cache.current.clear();
-      if (window.scrollY > 120) {
+      if (viewRef.current.tagId || viewRef.current.checklistOnly) {
+        void loadRef.current(false, true);
+      } else if (window.scrollY > 120) {
         setNewThoughts(true);
         void refreshLibrary();
       } else void loadRef.current(false, true);
@@ -180,7 +203,7 @@ export default function App() {
   }, []);
   function navigate(next: View) {
     positions.current.set(key(view), window.scrollY);
-    cache.current.set(key(view), { entries, more });
+    if (paginationValid.current) cache.current.set(key(view), { entries, more });
     setView(next);
     setSearch(!!next.query);
     setError("");
@@ -234,7 +257,7 @@ export default function App() {
         },
       );
     } catch {
-      setEntries((old) => old.map((e) => (e.id === entry.id ? entry : e)));
+      setEntries((old) => old.map((e) => (e.id === entry.id ? { ...e, starred: entry.starred } : e)));
       setRetry(() => () => void star(entry));
     } finally {
       pendingStars.current.delete(entry.id);
@@ -253,14 +276,52 @@ export default function App() {
       /* visible retry */
     }
   }
+  async function complete(entry: Entry) {
+    if (completionRequests.current.has(entry.id)) return;
+    completionRequests.current.add(entry.id);
+    setPendingCompletions(new Set(completionRequests.current));
+    selfMutation.current++;
+    ++version.current;
+    paginationValid.current = false;
+    setMore(false);
+    loadingRequest.current = 0;
+    setLoading(false);
+    cache.current.clear();
+    setError("");
+    const completed = !entry.completed;
+    function update(value: boolean) {
+      setEntries(old => old.map(e => e.id === entry.id ? { ...e, completed: value } : e));
+      setMapFocus(old => old?.id === entry.id ? { ...old, completed: value } : old);
+    }
+    update(completed);
+    try {
+      await bridge.setCompleted({ id: entry.id, completed });
+      cache.current.clear();
+    } catch (e) {
+      update(entry.completed);
+      failure(e, () => void complete(entry).catch(() => {}));
+      throw e;
+    } finally {
+      completionRequests.current.delete(entry.id);
+      setPendingCompletions(new Set(completionRequests.current));
+      // Refresh the full loaded prefix before deriving another pagination cursor.
+      // Wait for the last toggle when several independent items are being saved.
+      if (!completionRequests.current.size && viewRef.current.tab !== "map")
+        await load(false, true, entry.id);
+      selfMutation.current--;
+    }
+  }
   async function saved(id?: string) {
     cache.current.clear();
     const entry = id ? (await bridge.getEntry({ id })).entry : null;
+    const lib = await bridge.library();
+    setLibrary(lib);
     const matches =
       entry &&
       (!viewRef.current.tagId ||
         entry.tagIds.includes(viewRef.current.tagId)) &&
       (viewRef.current.tab !== "gems" || entry.starred) &&
+      (!viewRef.current.checklistOnly || filterEntries([entry], { checklistOnly: true }, lib.tags).length > 0) &&
       (!viewRef.current.query ||
         filterEntries([entry], { search: viewRef.current.query }).length > 0);
     if (matches) {
@@ -311,7 +372,7 @@ export default function App() {
                 className="icon-button"
                 aria-label="Back"
                 onClick={() =>
-                  navigate({ tab: view.tagId ? "tags" : view.tab, query: "" })
+                  navigate({ tab: view.tagId ? "tags" : view.tab, query: "", checklistOnly: view.checklistOnly })
                 }
               >
                 <PaperIcon name="back" size={21} />
@@ -331,6 +392,15 @@ export default function App() {
             </h1>
           </div>
           <div className="toolbar-actions">
+            {view.tab === "stream" && !view.settings && (
+              <button
+                className="icon-button stream-filter"
+                aria-label="To-dos only"
+                title="To-dos only"
+                aria-pressed={!!view.checklistOnly}
+                onClick={() => navigate({ ...view, checklistOnly: !view.checklistOnly })}
+              ><ListChecks size={21} aria-hidden="true" /></button>
+            )}
             {tag && (
               <button
                 className="icon-button"
@@ -357,7 +427,7 @@ export default function App() {
               className="icon-button"
               aria-label={view.settings ? "Close settings" : "Settings"}
               onClick={() =>
-                navigate({ tab: view.tab, query: "", settings: !view.settings })
+                navigate({ tab: view.tab, query: "", settings: !view.settings, checklistOnly: view.checklistOnly })
               }
             >
               {view.settings ? <PaperIcon name="close" size={21} /> : <PaperIcon name="gear" size={21} />}
@@ -401,7 +471,7 @@ export default function App() {
               }}
             />
           ) : view.tab === "map" ? (
-            <LocationMap query={view.query} tags={library.tags} edit={setEditing} />
+            <LocationMap query={view.query} tags={library.tags} edit={setEditing} complete={complete} pendingCompletions={pendingCompletions} />
           ) : view.tab === "tags" && !view.tagId ? (
             <TagList
               tags={library.tags}
@@ -412,6 +482,10 @@ export default function App() {
           ) : (
             <Feed
               entries={entries}
+              checklist={tag?.type === "checklist"}
+              categoryId={tag?.id}
+              complete={e => void complete(e).catch(() => {})}
+              pendingCompletions={pendingCompletions}
               openLocation={setMapFocus}
               tags={library.tags}
               loading={loading}
@@ -419,6 +493,7 @@ export default function App() {
               newThoughts={newThoughts}
               query={view.query}
               gems={view.tab === "gems"}
+              todosOnly={view.tab === "stream" && !!view.checklistOnly}
               reload={() => {
                 window.scrollTo(0, 0);
                 void load();
@@ -450,8 +525,8 @@ export default function App() {
                     onClick={() => {
                       setShowStream(false);
                       cache.current.clear();
-                      positions.current.set("stream//", 0);
                       const next: View = { tab: "stream", query: "" };
+                      positions.current.set(key(next), 0);
                       viewRef.current = next;
                       setView(next);
                       window.scrollTo(0, 0);
@@ -506,7 +581,7 @@ export default function App() {
           </aside>
         )}
       </div>
-      <Presence>{mapFocus && <Sheet title="Post location" close={() => setMapFocus(undefined)}><LocationMap focus={mapFocus} edit={entry => { setMapFocus(undefined); setEditing(entry); }} /></Sheet>}</Presence>
+      <Presence>{mapFocus && <Sheet title="Post location" close={() => setMapFocus(undefined)}><LocationMap focus={mapFocus} tags={library.tags} complete={complete} pendingCompletions={pendingCompletions} edit={entry => { setMapFocus(undefined); setEditing(entry); }} /></Sheet>}</Presence>
       <Presence>{editing && (
         <Editor
           key={editing.id}
@@ -525,6 +600,7 @@ export default function App() {
                 e.id !== entry.id
                   ? [e]
                   : updated &&
+                      (!view.checklistOnly || filterEntries([updated], { checklistOnly: true }, library.tags).length > 0) &&
                       (!view.tagId || updated.tagIds.includes(view.tagId)) &&
                       (!view.query ||
                         filterEntries([updated], { search: view.query }).length > 0)

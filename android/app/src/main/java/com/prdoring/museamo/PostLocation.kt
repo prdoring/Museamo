@@ -32,7 +32,7 @@ object PostLocation {
             .put("longitude", number("longitude", -180.0, 180.0))
             .put("capturedAt", number("capturedAt", 0.0, 253402300799999.0).toLong())
         if (!value.isNull("accuracy")) result.put("accuracy", number("accuracy", 0.0, Double.MAX_VALUE))
-        for (key in listOf("token", "name", "address", "locality", "userLabel")) {
+        for (key in listOf("token", "name", "address", "locality", "userLabel", "city", "region", "country", "countryCode")) {
             if (!value.isNull(key)) {
                 val s = value.get(key); require(s is String && s.length <= 500) { "Invalid location $key." }
                 result.put(key, s.trim())
@@ -43,20 +43,24 @@ object PostLocation {
     }
     fun search(value: String?): String {
         val o = value?.let { JSONObject(it) } ?: return ""
-        return listOf("userLabel", "name", "address", "locality").map { o.optString(it) }.joinToString(" ")
+        return listOf("userLabel", "name", "address", "locality", "city", "region", "country", "countryCode").map { o.optString(it) }.joinToString(" ")
     }
     fun label(value: String?): String {
         val o = value?.let { JSONObject(it) } ?: return "No location"
-        return listOf("userLabel", "name", "address", "locality").map { o.optString(it) }.firstOrNull { it.isNotBlank() } ?: "Saved location"
+        return LocationLabels.format(name = o.optString("name"), address = o.optString("address"), locality = o.optString("locality"), userLabel = o.optString("userLabel"), city = o.optString("city"), region = o.optString("region"), country = o.optString("country"), countryCode = o.optString("countryCode"))
     }
     fun enrich(value: String, address: Address?): String {
         if (address == null) return value
         val o = JSONObject(value)
-        val feature = address.featureName?.takeIf { it.isNotBlank() && it.any(Char::isLetter) && it != address.thoroughfare && it != address.locality && it != address.subThoroughfare }
+        val street = listOfNotNull(address.subThoroughfare, address.thoroughfare).joinToString(" ")
+        val excludedNames = listOfNotNull(street, address.thoroughfare, address.locality, address.subThoroughfare, address.adminArea, address.countryName, address.postalCode, address.getAddressLine(0))
+        val feature = address.featureName?.takeIf { it.isNotBlank() && it.any(Char::isLetter) && excludedNames.none { other -> it.trim().equals(other.trim(), true) } }
         feature?.let { o.put("name", it.take(500)) }
-        // A town-only result is a locality, not a fabricated street address.
-        if (!address.thoroughfare.isNullOrBlank()) address.getAddressLine(0)?.let { o.put("address", it.take(500)) }
+        address.getAddressLine(0)?.takeIf { it.isNotBlank() }?.let { o.put("address", it.take(500)) }
         listOfNotNull(address.locality ?: address.subAdminArea, address.adminArea).distinct().joinToString(", ").takeIf { it.isNotBlank() }?.let { o.put("locality", it.take(500)) }
+        mapOf("city" to (address.locality ?: address.subAdminArea), "region" to address.adminArea, "country" to address.countryName, "countryCode" to address.countryCode).forEach { (key, text) ->
+            text?.takeIf { it.isNotBlank() }?.let { o.put(key, it.trim().take(500)) }
+        }
         return o.toString()
     }
 }

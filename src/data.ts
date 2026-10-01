@@ -5,6 +5,8 @@ import {
 } from "@capacitor/core";
 import { type Attachment, MEDIA_LIMIT } from "./media";
 import { hashtags } from "./hashtags";
+import { type LocationLabelParts } from "./locationLabels";
+export { locationLabel } from "./locationLabels";
 export type LocationStatus = "available" | "services-off" | "permission-denied" | "disabled" | "timeout" | "cancelled" | "unavailable";
 export function locationStatusMessage(status: LocationStatus) {
   switch (status) {
@@ -17,21 +19,17 @@ export function locationStatusMessage(status: LocationStatus) {
     default: return "";
   }
 }
-export interface PostLocation {
+export interface PostLocation extends LocationLabelParts {
   latitude: number;
   longitude: number;
   capturedAt: number;
   accuracy?: number;
   token: string;
-  name?: string;
-  address?: string;
-  locality?: string;
-  userLabel?: string;
 }
-export const locationLabel = (location: PostLocation) => location.userLabel?.trim() || location.name || location.address || location.locality || "Saved location";
 export interface Tag {
   id: string;
   name: string;
+  type: "standard" | "checklist";
   count?: number;
 }
 export interface Entry {
@@ -42,6 +40,7 @@ export interface Entry {
   createdAt: number;
   updatedAt: number;
   starred: boolean;
+  completed: boolean;
   tagIds: string[];
   profileId: string | null;
 }
@@ -63,6 +62,9 @@ export interface Draft {
   profileId: string | null;
 }
 export interface EntryQuery {
+  checklistOnly?: boolean;
+  order?: "newest" | "checklist";
+  beforeCompleted?: boolean;
   located?: boolean;
   search?: string;
   starred?: boolean;
@@ -105,9 +107,10 @@ export interface MuseamoBridge {
     locationAttempted?: boolean;
   }): Promise<void>;
   setStar(input: { id: string; starred: boolean }): Promise<void>;
+  setCompleted(input: { id: string; completed: boolean }): Promise<void>;
   deleteEntry(input: { id: string }): Promise<void>;
   restoreEntry(input: { entry: Entry }): Promise<void>;
-  saveTag(input: { id?: string; name: string }): Promise<void>;
+  saveTag(input: { id?: string; name: string; type?: Tag["type"] }): Promise<void>;
   deleteTag(input: { id: string }): Promise<void>;
   saveProfile(input: { profile: Profile }): Promise<void>;
   getDraft(input: {
@@ -134,16 +137,17 @@ export interface MuseamoBridge {
 }
 export const isNative = Capacitor.isNativePlatform();
 export const previewTags: Tag[] = [
-  { id: "thoughts", name: "Shower thoughts" },
-  { id: "words", name: "Cool words" },
-  { id: "jokes", name: "Jokes" },
-  { id: "later", name: "For later" },
+  { id: "thoughts", name: "Shower thoughts", type: "standard" },
+  { id: "words", name: "Cool words", type: "standard" },
+  { id: "jokes", name: "Jokes", type: "standard" },
+  { id: "later", name: "For later", type: "checklist" },
 ];
 const now = Date.now();
 export const previewEntries: Entry[] = [
   {
     id: "preview-1",
-    location: { latitude: 37.7599, longitude: -122.4241, capturedAt: Date.now(), token: "preview-location-1", locality: "San Francisco", userLabel: "Bakery" },
+    completed: false,
+    location: { latitude: 37.7599, longitude: -122.4241, capturedAt: Date.now(), token: "preview-location-1", city: "San Francisco", region: "California", country: "United States", countryCode: "US", locality: "San Francisco, California", userLabel: "Bakery" },
     text: 'A book is just a very long message from someone you’ve never met. #"Shower thoughts"',
     createdAt: now,
     updatedAt: now,
@@ -153,6 +157,7 @@ export const previewEntries: Entry[] = [
   },
   {
     id: "preview-2",
+    completed: false,
     location: { latitude: 37.7694, longitude: -122.4862, capturedAt: Date.now(), token: "preview-location-2" },
     text: '**Apricity**\n_noun_\n\nThe warmth of the sun in winter.\n\n- A whole feeling, tucked into one word.\n- Best enjoyed by a sunny window.\n #"Cool words"',
     createdAt: now - 3600000,
@@ -163,15 +168,17 @@ export const previewEntries: Entry[] = [
   },
   {
     id: "preview-3",
+    completed: false,
     text: "Buy the good peaches. 🍑",
     createdAt: now - 7200000,
     updatedAt: now - 7200000,
     starred: false,
-    tagIds: [],
+    tagIds: ["later"],
     profileId: null,
   },
   {
     id: "preview-4",
+    completed: true,
     text: "Things I noticed on the walk:\n\nThe tiny door in the old brick wall.\nA dog carrying its own lead.\nSomeone practicing the same four piano notes.\nThe smell of rain before it arrived.\nAn orange chair left at the bus stop.\nA handwritten sign: back in five.\n\nI like that none of these needed a photograph.\nI just wanted to remember them.",
     createdAt: now - 86400000,
     updatedAt: now - 86400000,
@@ -180,15 +187,30 @@ export const previewEntries: Entry[] = [
     profileId: null,
   },
 ];
-export function filterEntries(entries: Entry[], query: EntryQuery): Entry[] {
+export function filterEntries(entries: Entry[], query: EntryQuery, availableTags: Tag[] = []): Entry[] {
   return entries.filter(
     (e) =>
       (!query.located || !!e.location) &&
       (!query.starred || e.starred) &&
+      (!query.checklistOnly || isChecklistEntry(e, availableTags)) &&
       (!query.tagId || e.tagIds.includes(query.tagId)) &&
       (!query.search ||
-        [e.text, e.location?.userLabel, e.location?.name, e.location?.address, e.location?.locality].filter(Boolean).join(" ").toLocaleLowerCase().includes(query.search.toLocaleLowerCase())),
+        [e.text, e.location?.userLabel, e.location?.name, e.location?.address, e.location?.locality, e.location?.city, e.location?.region, e.location?.country, e.location?.countryCode].filter(Boolean).join(" ").toLocaleLowerCase().includes(query.search.toLocaleLowerCase())),
   );
+}
+export function isChecklistEntry(entry: Entry, tags: Tag[]): boolean {
+  return tags.some(tag => tag.type === "checklist" && entry.tagIds.includes(tag.id));
+}
+export function compareEntries(a: Entry, b: Entry, checklist = false): number {
+  return (checklist ? Number(a.completed) - Number(b.completed) : 0) ||
+    b.createdAt - a.createdAt || (a.id === b.id ? 0 : a.id < b.id ? 1 : -1);
+}
+export function isAfterCursor(entry: Entry, query: EntryQuery): boolean {
+  if (query.beforeTime === undefined) return true;
+  if (query.order === "checklist" && entry.completed !== query.beforeCompleted)
+    return entry.completed;
+  return entry.createdAt < query.beforeTime ||
+    (entry.createdAt === query.beforeTime && entry.id < (query.beforeId || ""));
 }
 export function dayLabel(timestamp: number): string {
   const date = new Date(timestamp);
@@ -243,7 +265,7 @@ function assigned(text: string, explicit: string[], previous?: Entry) {
     .map(({ name }) => {
       let tag = tags.find((t) => t.name.toLowerCase() === name.toLowerCase());
       if (!tag) {
-        tag = { id: crypto.randomUUID(), name };
+        tag = { id: crypto.randomUUID(), name, type: "standard" };
         tags.push(tag);
       }
       return tag.id;
@@ -276,7 +298,7 @@ export const preview = {
         createdAt: now - (i + 2) * 86400000,
       });
     for (let i = 0; i < 35; i++)
-      tags.push({ id: crypto.randomUUID(), name: `Topic ${i + 1}` });
+      tags.push({ id: crypto.randomUUID(), name: `Topic ${i + 1}`, type: "standard" });
     changed();
   },
   save(draft: Draft) {
@@ -292,6 +314,7 @@ export const preview = {
       attachments: clone(draft.attachments || []),
       tagIds: assigned(draft.text, draft.tagIds),
       starred: false,
+      completed: false,
       createdAt: time,
       updatedAt: time,
       profileId: null,
@@ -372,15 +395,15 @@ const browser: MuseamoBridge = {
     window.open(parsed.href, "_blank", "noopener,noreferrer");
   },
   async queryEntries(q) {
-    const rows = filterEntries(entries, q)
-      .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))
-      .filter(
-        (e) =>
-          q.beforeTime === undefined ||
-          e.createdAt < q.beforeTime ||
-          (e.createdAt === q.beforeTime && e.id < (q.beforeId || "")),
-      );
-    const start = q.offset || 0,
+    if (q.order && !["newest", "checklist"].includes(q.order)) throw new Error("Unknown thought order.");
+    if (q.order === "checklist") {
+      if (!tags.some(t => t.id === q.tagId && t.type === "checklist")) throw new Error("Choose a Checklist category.");
+      if (q.beforeTime !== undefined && typeof q.beforeCompleted !== "boolean") throw new Error("Reload this checklist before loading more thoughts.");
+    }
+    const rows = filterEntries(entries, q, tags)
+      .sort((a, b) => compareEntries(a, b, q.order === "checklist"))
+      .filter(e => isAfterCursor(e, q));
+    const start = q.beforeTime === undefined ? Math.max(0, q.offset || 0) : 0,
       limit = q.limit || 50;
     return clone({
       entries: rows.slice(start, start + limit),
@@ -422,6 +445,15 @@ const browser: MuseamoBridge = {
     if (e) e.starred = starred;
     changed();
   },
+  async setCompleted({ id, completed }) {
+    mutation();
+    const entry = entries.find(e => e.id === id);
+    if (!entry) throw new Error("This thought no longer exists.");
+    if (typeof completed !== "boolean") throw new Error("Invalid completed state.");
+    if (!isChecklistEntry(entry, tags)) throw new Error("This thought no longer belongs to a Checklist category.");
+    entry.completed = completed;
+    changed();
+  },
   async deleteEntry({ id }) {
     mutation();
     const entry = entries.find(e => e.id === id);
@@ -441,7 +473,7 @@ const browser: MuseamoBridge = {
       );
     changed();
   },
-  async saveTag({ id, name }) {
+  async saveTag({ id, name, type }) {
     mutation();
     name = name.trim();
     if (!name || name.length > 80) throw new Error("Use 1–80 characters.");
@@ -452,8 +484,10 @@ const browser: MuseamoBridge = {
     )
       throw new Error("This tag already exists.");
     const tag = tags.find((t) => t.id === id);
-    if (tag) tag.name = name;
-    else tags.push({ id: crypto.randomUUID(), name });
+    const categoryType = type ?? tag?.type ?? "standard";
+    if (!["standard", "checklist"].includes(categoryType)) throw new Error("Unknown category type.");
+    if (tag) Object.assign(tag, { name, type: categoryType });
+    else tags.push({ id: crypto.randomUUID(), name, type: categoryType });
     changed();
   },
   async deleteTag({ id }) {

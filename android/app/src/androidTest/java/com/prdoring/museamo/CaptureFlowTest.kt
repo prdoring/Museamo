@@ -11,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Rule
 import org.junit.runner.RunWith
 import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
@@ -18,11 +19,12 @@ import java.util.concurrent.TimeUnit
 @RunWith(AndroidJUnit4::class)
 class CaptureFlowTest {
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
+    @get:Rule val location = ManualLocationRule()
     private fun <T> repository(block: (Repository) -> T): T = Store.executor.submit(Callable { block(Store.get(context)) }).get(10, TimeUnit.SECONDS)
     private fun settle() { repository { }; InstrumentationRegistry.getInstrumentation().waitForIdleSync() }
     @Test fun nativeComposerSavesWithProfileTagsWithoutLaunchingReact() {
         val profile = repository { repo ->
-            val tag = repo.saveTag(null, "Capture test ${uid()}")
+            val tag = repo.saveTag(null, "Capture test ${uid()}", "checklist")
             ProfileRow(uid(), "Native capture test", "fixed", jsonIds(listOf(tag.id))).also { repo.saveProfile(it) }
         }
         val text = "Native capture ${uid()}"
@@ -38,6 +40,7 @@ class CaptureFlowTest {
             settle()
             val entries = repository { repo -> repo.dao.query(text, false, "", 10, 0) }
             assertEquals(1, entries.size); assertEquals(profile.tagIds, entries.single().tagIds)
+            assertFalse(entries.single().completed)
             assertNull(repository { repo -> repo.dao.draft(profile.id) })
         }
     }
@@ -55,7 +58,7 @@ class CaptureFlowTest {
     }
     @Test fun pickerSearchUpdatesOnlyItsOwnProfileAndPreservesDraftTags() {
         val (first, second, tag) = repository { repo ->
-            val t = repo.saveTag(null, "Searchable ${uid()}")
+            val t = repo.saveTag(null, "Searchable ${uid()}", "checklist")
             val a = ProfileRow(uid(), "Picker one", "picker"); val b = ProfileRow(uid(), "Picker two", "picker")
             repo.saveProfile(a); repo.saveProfile(b)
             repo.saveDraft(repo.draft(a.id, a, null).copy(text = "Already started"))
@@ -65,7 +68,7 @@ class CaptureFlowTest {
             settle()
             onView(withContentDescription("Search available tags")).perform(replaceText(tag.name), closeSoftKeyboard())
             Thread.sleep(500) // The bottom sheet relocates while the IME animates away.
-            onView(org.hamcrest.Matchers.allOf(withText(tag.name), isAssignableFrom(android.widget.Button::class.java))).perform(scrollTo(), click()); settle()
+            onView(org.hamcrest.Matchers.allOf(withContentDescription(tag.accessibleLabel()), isAssignableFrom(android.widget.Button::class.java))).perform(scrollTo(), click()); settle()
             assertEquals(tag.id, repository { repo -> repo.dao.profile(first.id)!!.selectedTagId })
             assertNull(repository { repo -> repo.dao.profile(second.id)!!.selectedTagId })
             assertEquals("[]", repository { repo -> repo.dao.draft(first.id)!!.tagIds })

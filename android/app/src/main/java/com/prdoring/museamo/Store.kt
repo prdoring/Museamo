@@ -12,9 +12,9 @@ fun ids(json: String): List<String> = JSONArray(json).let { a -> (0 until a.leng
 fun jsonIds(values: List<String>): String = JSONArray(values.distinct()).toString()
 
 @Entity(tableName = "entries", indices = [Index(value = ["createdAt", "id"])])
-data class EntryRow(@PrimaryKey val id: String, val text: String, val createdAt: Long, val updatedAt: Long, val starred: Boolean = false, val tagIds: String = "[]", val profileId: String? = null, @ColumnInfo(defaultValue = "'[]'") val mediaIds: String = "[]", val location: String? = null, @ColumnInfo(defaultValue = "''") val locationSearch: String = PostLocation.search(location))
+data class EntryRow(@PrimaryKey val id: String, val text: String, val createdAt: Long, val updatedAt: Long, val starred: Boolean = false, val tagIds: String = "[]", val profileId: String? = null, @ColumnInfo(defaultValue = "'[]'") val mediaIds: String = "[]", val location: String? = null, @ColumnInfo(defaultValue = "''") val locationSearch: String = PostLocation.search(location), @ColumnInfo(defaultValue = "0") val completed: Boolean = false)
 @Entity(tableName = "tags", indices = [Index(value = ["normalizedName"], unique = true)])
-data class TagRow(@PrimaryKey val id: String, val name: String, val normalizedName: String = name.lowercase(java.util.Locale.ROOT))
+data class TagRow(@PrimaryKey val id: String, val name: String, val normalizedName: String = name.lowercase(java.util.Locale.ROOT), @ColumnInfo(defaultValue = "'standard'") val type: String = "standard")
 @Entity(tableName = "profiles")
 data class ProfileRow(@PrimaryKey val id: String, val label: String, val mode: String, val tagIds: String = "[]", val selectedTagId: String? = null)
 @Entity(tableName = "drafts")
@@ -31,10 +31,12 @@ interface StoreDao {
     @Query("SELECT * FROM media WHERE id = :id") fun media(id: String): MediaRow?
     @Insert fun insertMedia(row: MediaRow)
     @Query("DELETE FROM media WHERE id = :id") fun deleteMedia(id: String)
-    @Query("SELECT * FROM entries WHERE (:starred = 0 OR starred = 1) AND (:tag = '' OR instr(tagIds, :tag) > 0) AND (:search = '' OR instr(lower(text || ' ' || locationSearch), lower(:search)) > 0) AND (:located = 0 OR location IS NOT NULL) ORDER BY createdAt DESC, id DESC LIMIT :limit OFFSET :offset")
-    fun query(search: String, starred: Boolean, tag: String, limit: Int, offset: Int, located: Boolean = false): List<EntryRow>
-    @Query("SELECT * FROM entries WHERE (:starred = 0 OR starred = 1) AND (:tag = '' OR instr(tagIds, :tag) > 0) AND (:search = '' OR instr(lower(text || ' ' || locationSearch), lower(:search)) > 0) AND (:beforeTime IS NULL OR createdAt < :beforeTime OR (createdAt = :beforeTime AND id < :beforeId)) AND (:located = 0 OR location IS NOT NULL) ORDER BY createdAt DESC, id DESC LIMIT :limit")
-    fun page(search: String, starred: Boolean, tag: String, limit: Int, beforeTime: Long?, beforeId: String, located: Boolean = false): List<EntryRow>
+    @Query("SELECT * FROM entries WHERE (:starred = 0 OR starred = 1) AND (:tag = '' OR instr(tagIds, :tag) > 0) AND (:search = '' OR instr(lower(text || ' ' || locationSearch), lower(:search)) > 0) AND (:located = 0 OR location IS NOT NULL) AND (:checklistOnly = 0 OR EXISTS (SELECT 1 FROM tags WHERE tags.type = 'checklist' AND instr(entries.tagIds, '\"' || tags.id || '\"') > 0)) ORDER BY createdAt DESC, id DESC LIMIT :limit OFFSET :offset")
+    fun query(search: String, starred: Boolean, tag: String, limit: Int, offset: Int, located: Boolean = false, checklistOnly: Boolean = false): List<EntryRow>
+    @Query("SELECT * FROM entries WHERE (:starred = 0 OR starred = 1) AND (:tag = '' OR instr(tagIds, :tag) > 0) AND (:search = '' OR instr(lower(text || ' ' || locationSearch), lower(:search)) > 0) AND (:beforeTime IS NULL OR createdAt < :beforeTime OR (createdAt = :beforeTime AND id < :beforeId)) AND (:located = 0 OR location IS NOT NULL) AND (:checklistOnly = 0 OR EXISTS (SELECT 1 FROM tags WHERE tags.type = 'checklist' AND instr(entries.tagIds, '\"' || tags.id || '\"') > 0)) ORDER BY createdAt DESC, id DESC LIMIT :limit")
+    fun page(search: String, starred: Boolean, tag: String, limit: Int, beforeTime: Long?, beforeId: String, located: Boolean = false, checklistOnly: Boolean = false): List<EntryRow>
+    @Query("SELECT * FROM entries WHERE (:starred = 0 OR starred = 1) AND instr(tagIds, :tag) > 0 AND (:search = '' OR instr(lower(text || ' ' || locationSearch), lower(:search)) > 0) AND (:located = 0 OR location IS NOT NULL) AND (:beforeTime IS NULL OR completed > :beforeCompleted OR (completed = :beforeCompleted AND (createdAt < :beforeTime OR (createdAt = :beforeTime AND id < :beforeId)))) ORDER BY completed ASC, createdAt DESC, id DESC LIMIT :limit OFFSET :offset")
+    fun checklistPage(search: String, starred: Boolean, tag: String, limit: Int, beforeTime: Long?, beforeId: String, beforeCompleted: Boolean, located: Boolean = false, offset: Int = 0): List<EntryRow>
     @Query("SELECT COUNT(*) FROM entries WHERE instr(tagIds, :quotedTag) > 0") fun tagCount(quotedTag: String): Int
     @Query("SELECT * FROM entries ORDER BY createdAt DESC, id DESC") fun entries(): List<EntryRow>
     @Query("SELECT * FROM entries WHERE id = :id") fun entry(id: String): EntryRow?
@@ -58,7 +60,7 @@ interface StoreDao {
     @Query("DELETE FROM bindings WHERE widgetId = :id") fun deleteBinding(id: Int)
 }
 
-@Database(entities = [EntryRow::class, TagRow::class, ProfileRow::class, DraftRow::class, BindingRow::class, MediaRow::class], version = 3, exportSchema = true)
+@Database(entities = [EntryRow::class, TagRow::class, ProfileRow::class, DraftRow::class, BindingRow::class, MediaRow::class], version = 4, exportSchema = true)
 abstract class MuseamoDatabase : RoomDatabase() { abstract fun dao(): StoreDao }
 
 class Repository(val db: MuseamoDatabase) {
@@ -75,12 +77,19 @@ class Repository(val db: MuseamoDatabase) {
     fun delete(id: String) { dao.entry(id)?.let { deletedPins[id] = ids(it.mediaIds) }; dao.deleteEntry(id) }
     fun references(): Set<String> = (dao.entries().flatMap { ids(it.mediaIds) } + dao.drafts().flatMap { ids(it.mediaIds) } + mediaPins + deletedPins.values.flatten()).toSet()
     fun validTags(tags: List<String>): List<String> = tags.distinct().filter { dao.tag(it) != null }
-    fun saveTag(id: String?, rawName: String): TagRow {
+    fun saveTag(id: String?, rawName: String, type: String? = null): TagRow {
         val name = rawName.trim()
         require(name.isNotEmpty() && name.length <= 80) { "Use a tag name between 1 and 80 characters." }
         val normalized = name.lowercase(java.util.Locale.ROOT)
         require(dao.tags().none { it.normalizedName == normalized && it.id != id }) { "A tag with this name already exists." }
-        return TagRow(id ?: uid(), name, normalized).also { dao.putTag(it) }
+        val categoryType = type ?: id?.let { dao.tag(it)?.type } ?: "standard"
+        require(categoryType in listOf("standard", "checklist")) { "Unknown category type." }
+        return TagRow(id ?: uid(), name, normalized, categoryType).also { dao.putTag(it) }
+    }
+    fun setCompleted(id: String, completed: Boolean) {
+        val row = requireNotNull(dao.entry(id)) { "This thought no longer exists." }
+        require(ids(row.tagIds).any { dao.tag(it)?.type == "checklist" }) { "This thought no longer belongs to a Checklist category." }
+        dao.updateEntry(row.copy(completed = completed))
     }
     fun saveProfile(row: ProfileRow) {
         require(row.label.trim().isNotEmpty() && row.label.length <= 80) { "Give the widget a label (up to 80 characters)." }
@@ -148,11 +157,17 @@ val LOCATION_MIGRATION = object : androidx.room.migration.Migration(2, 3) {
         db.execSQL("ALTER TABLE drafts ADD COLUMN locationAttempted INTEGER NOT NULL DEFAULT 0")
     }
 }
+val CHECKLIST_MIGRATION = object : androidx.room.migration.Migration(3, 4) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tags ADD COLUMN type TEXT NOT NULL DEFAULT 'standard'")
+        db.execSQL("ALTER TABLE entries ADD COLUMN completed INTEGER NOT NULL DEFAULT 0")
+    }
+}
 object Store {
     val executor = Executors.newSingleThreadExecutor()
     @Volatile private var repository: Repository? = null
     fun get(context: Context): Repository = repository ?: synchronized(this) {
-        repository ?: Repository(Room.databaseBuilder(context.applicationContext, MuseamoDatabase::class.java, "museamo.db").addMigrations(MEDIA_MIGRATION, LOCATION_MIGRATION).build()).also { MediaFiles(context, it).apply { recoverInterruptedImports(); cleanup() }; repository = it }
+        repository ?: Repository(Room.databaseBuilder(context.applicationContext, MuseamoDatabase::class.java, "museamo.db").addMigrations(MEDIA_MIGRATION, LOCATION_MIGRATION, CHECKLIST_MIGRATION).build()).also { MediaFiles(context, it).apply { recoverInterruptedImports(); cleanup() }; repository = it }
     }
     fun changed(context: Context) {
         context.sendBroadcast(android.content.Intent("com.prdoring.museamo.DATA_CHANGED").setPackage(context.packageName))
@@ -160,8 +175,8 @@ object Store {
     }
 }
 
-fun EntryRow.json(): JSONObject = JSONObject().put("id", id).put("text", text).put("createdAt", createdAt).put("updatedAt", updatedAt).put("starred", starred).put("tagIds", JSONArray(tagIds)).put("profileId", profileId ?: JSONObject.NULL).put("attachmentIds", JSONArray(mediaIds)).put("location", location?.let { JSONObject(it) } ?: JSONObject.NULL)
-fun TagRow.json(): JSONObject = JSONObject().put("id", id).put("name", name)
+fun EntryRow.json(): JSONObject = JSONObject().put("id", id).put("text", text).put("createdAt", createdAt).put("updatedAt", updatedAt).put("starred", starred).put("completed", completed).put("tagIds", JSONArray(tagIds)).put("profileId", profileId ?: JSONObject.NULL).put("attachmentIds", JSONArray(mediaIds)).put("location", location?.let { JSONObject(it) } ?: JSONObject.NULL)
+fun TagRow.json(): JSONObject = JSONObject().put("id", id).put("name", name).put("type", type)
 fun ProfileRow.json(): JSONObject = JSONObject().put("id", id).put("label", label).put("mode", mode).put("tagIds", JSONArray(tagIds)).put("selectedTagId", selectedTagId ?: JSONObject.NULL)
 fun DraftRow.json(): JSONObject = JSONObject().put("locationAttempted", locationAttempted).put("profileKey", profileKey).put("entryId", entryId).put("text", text).put("tagIds", JSONArray(tagIds)).put("profileId", profileId ?: JSONObject.NULL).put("attachmentIds", JSONArray(mediaIds)).put("location", location?.let { JSONObject(it) } ?: JSONObject.NULL)
 

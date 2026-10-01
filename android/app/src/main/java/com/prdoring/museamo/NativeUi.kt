@@ -54,7 +54,7 @@ abstract class NativeScreen : AppCompatActivity() {
     fun label(text: String, size: Int = 17): TextView = TextView(this).apply { this.text = text; textSize = size.toFloat(); typeface = font; setTextColor(ContextCompat.getColor(this@NativeScreen, R.color.widget_text)) }
     fun title(text: String) { body.addView(heading(text).apply { setPadding(0, dp(8), 0, dp(16)) }); body.addView(View(this).apply { setBackgroundColor(color(R.color.widget_text)) }, LinearLayout.LayoutParams(-1, dp(2))) }
     fun note(text: String) { body.addView(label(text, 14).apply { setTextColor(ContextCompat.getColor(this@NativeScreen, R.color.widget_muted)); setPadding(0, dp(6), 0, dp(12)) }) }
-    fun button(text: String, action: () -> Unit): Button = object : androidx.appcompat.widget.AppCompatButton(this) {
+    fun button(text: CharSequence, action: () -> Unit): Button = object : androidx.appcompat.widget.AppCompatButton(this) {
         override fun drawableStateChanged() { super.drawableStateChanged(); alpha = if (isEnabled) 1f else .5f }
     }.apply {
         this.text = text; textSize = 14f; typeface = font; isAllCaps = false; minHeight = dp(48); minimumHeight = dp(48)

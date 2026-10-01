@@ -1,6 +1,7 @@
 import { PaperIcon } from "./PaperIcon";
 import {
   Hash,
+  ListChecks,
   MoreHorizontal,
   Search,
 } from "lucide-react";
@@ -28,8 +29,8 @@ export function TagList({
       {filtered.map((t) => (
         <div className="tag-row" key={t.id}>
           <button onClick={() => open(t.id)}>
-            <Hash size={19} />
-            <span>{t.name}</span>
+            {t.type === "checklist" ? <ListChecks size={19} aria-hidden="true" /> : <Hash size={19} aria-hidden="true" />}
+            <span>{t.name}{t.type === "checklist" && <small className="category-type">Checklist</small>}</span>
             <small>{t.count || 0}</small>
             <PaperIcon name="next" size={18} />
           </button>

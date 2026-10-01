@@ -54,11 +54,12 @@ class CaptureWidget : AppWidgetProvider() {
         internal fun viewsForSize(context: Context, widgetId: Int, width: Int, height: Int): RemoteViews {
             val dao = Store.get(context).dao
             val profile = dao.binding(widgetId)?.let { dao.profile(it.profileId) }
+            val tag = profile?.selectedTagId?.let { dao.tag(it) }
             return buildViews(context, widgetId, width, height, profile,
                 profile?.let { dao.draft(it.id)?.text?.isNotBlank() == true } == true,
-                profile?.selectedTagId?.let { dao.tag(it)?.name } ?: "No tag")
+                tag?.name ?: "No tag", tag?.type == "checklist")
         }
-        internal fun buildViews(context: Context, widgetId: Int, width: Int, height: Int, profile: ProfileRow?, pendingDraft: Boolean, tagName: String): RemoteViews {
+        internal fun buildViews(context: Context, widgetId: Int, width: Int, height: Int, profile: ProfileRow?, pendingDraft: Boolean, tagName: String, checklist: Boolean = false): RemoteViews {
             val card = width >= 100 && height >= 120
             // Keep one- and two-cell rows free of squeezed labels and picker controls.
             val compact = width < 260 && !card
@@ -84,9 +85,11 @@ class CaptureWidget : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.widget_label, capture)
             views.setViewVisibility(R.id.widget_picker, if (profile?.mode == "picker" && !compact) View.VISIBLE else View.GONE)
             if (profile?.mode == "picker") {
+                views.setViewVisibility(R.id.widget_picker_type, if (checklist) View.VISIBLE else View.GONE)
+                views.setViewVisibility(R.id.widget_picker_text, if (checklist && width < 260) View.GONE else View.VISIBLE)
                 views.setTextViewText(R.id.widget_picker_text, if (width < 260) "#" else tagName)
-                views.setInt(R.id.widget_picker_text, "setMaxWidth", ((if (card) width - 84f else (width - 40) * .35f - 36).coerceAtLeast(18f) * context.resources.displayMetrics.density).toInt())
-                views.setContentDescription(R.id.widget_picker, "Choose tag. Current: " + (tagName))
+                views.setInt(R.id.widget_picker_text, "setMaxWidth", ((if (card) width - 84f else (width - 40) * .35f - 36).minus(if (checklist) 16f else 0f).coerceAtLeast(18f) * context.resources.displayMetrics.density).toInt())
+                views.setContentDescription(R.id.widget_picker, "Choose tag. Current: " + tagName + if (checklist) ", Checklist" else "")
                 views.setOnClickPendingIntent(R.id.widget_picker, intent(TagPickerActivity::class.java, "picker"))
             }
             return views

@@ -19,12 +19,12 @@ class WidgetResizeTest {
     @Test fun compactRowsAndCardsKeepActionsInsideBounds() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val base = instrumentation.targetContext
-        for (fontScale in listOf(1f, 2f)) for (mode in listOf("fixed", "picker")) {
+        for (fontScale in listOf(1f, 2f)) for (mode in listOf("fixed", "picker")) for (checklist in listOf(false, true)) {
             val context = base.createConfigurationContext(Configuration(base.resources.configuration).apply { this.fontScale = fontScale })
             for ((width, height) in listOf(40 to 40, 80 to 40, 40 to 80, 80 to 80, 140 to 40, 180 to 60, 220 to 60, 259 to 60, 260 to 40, 100 to 120, 260 to 120, 100 to 180, 320 to 280, 600 to 400)) {
                 val compact = width < 260 && !(width >= 100 && height >= 120)
                 val profile = ProfileRow("resize-test", "Words and thoughts to remember for later", mode, "[]", null)
-                val remote = CaptureWidget.buildViews(context, -991, width, height, profile, true, "A very long tag name")
+                val remote = CaptureWidget.buildViews(context, -991, width, height, profile, true, "A very long tag name", checklist)
                 instrumentation.runOnMainSync {
                     val view = remote.apply(context, FrameLayout(context))
                     val density = context.resources.displayMetrics.density
@@ -51,11 +51,22 @@ class WidgetResizeTest {
                     action(R.id.widget_open_app)
                     if (!compact) assertEquals(if (mode == "picker" && !compact) View.VISIBLE else View.GONE, view.findViewById<View>(R.id.widget_picker).visibility)
                     if (mode == "picker" && !compact) action(R.id.widget_picker)
+                    if (mode == "picker" && !compact) {
+                        val marker = view.findViewById<View>(R.id.widget_picker_type)
+                        assertEquals(if (checklist) View.VISIBLE else View.GONE, marker.visibility)
+                        assertEquals(checklist, view.findViewById<View>(R.id.widget_picker).contentDescription.contains("Checklist"))
+                        if (checklist) {
+                            val bounds = android.graphics.Rect(0, 0, marker.width, marker.height)
+                            (view as android.view.ViewGroup).offsetDescendantRectToMyCoords(marker, bounds)
+                            assertTrue("Checklist indicator outside $width x $height: $bounds", bounds.left >= 0 && bounds.top >= 0 && bounds.right <= w && bounds.bottom <= h)
+                            if (width < 260) assertEquals(View.GONE, view.findViewById<View>(R.id.widget_picker_text).visibility)
+                        }
+                    }
                     if (fontScale == 1f && mode == "picker") {
                         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                         view.draw(Canvas(bitmap))
                         val dir = File(base.cacheDir, "widget-resize").apply { mkdirs() }
-                        File(dir, "$width-$height.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        File(dir, "$width-$height${if (checklist) "-checklist" else ""}.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                         bitmap.recycle()
                     }
                 }

@@ -12,12 +12,14 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Rule
 import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class NativeMediaTest {
+    @get:Rule val location = ManualLocationRule()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun <T> repository(block: (Repository) -> T): T = Store.executor.submit(Callable { block(Store.get(context)) }).get(30, TimeUnit.SECONDS)
     private fun js(scenario: ActivityScenario<MainActivity>, script: String): String {

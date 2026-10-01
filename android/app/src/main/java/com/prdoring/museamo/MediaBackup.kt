@@ -15,7 +15,7 @@ object MediaBackup {
     fun export(context: Context, repo: Repository, output: OutputStream) {
         val files = MediaFiles(context, repo)
         // Caller runs on the repository executor, so this snapshot and its files cannot change.
-        val root = JSONObject(Backup.export(repo)).put("version", 3)
+        val root = JSONObject(Backup.export(repo, version = 4))
         val rows = repo.dao.entries().flatMap { ids(it.mediaIds) }.distinct().map { requireNotNull(repo.dao.media(it)) }
         root.put("media", JSONArray(rows.map { it.json() }))
         val manifest = root.toString(2).toByteArray(Charsets.UTF_8)
@@ -48,7 +48,7 @@ object MediaBackup {
             ZipInputStream(buffered).use { zip ->
                 require(zip.nextEntry?.name == "manifest.json") { "Choose a Museamo archive with manifest.json first." }
                 val root = JSONObject(readManifest(zip))
-                require(root.get("format") == "museamo" && root.get("version") in listOf(2, 3)) { "Unsupported backup version." }
+                require(root.get("format") == "museamo" && root.get("version") in listOf(2, 3, 4)) { "Unsupported backup version." }
                 val array = root.getJSONArray("media")
                 val rows = (0 until array.length()).map { parseMedia(array.getJSONObject(it)) }
                 require(rows.map { it.id }.distinct().size == rows.size) { "Duplicate media IDs." }

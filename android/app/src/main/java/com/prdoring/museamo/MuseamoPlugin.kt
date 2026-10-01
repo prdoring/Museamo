@@ -115,7 +115,14 @@ class MuseamoPlugin : Plugin() {
     @PluginMethod fun queryEntries(call: PluginCall) = task(call) { repo ->
         val limit = (call.getInt("limit") ?: 50).coerceIn(1, Int.MAX_VALUE - 1)
         val tag = call.getString("tagId")?.let { "\"$it\"" } ?: ""
-        val rows = if (call.getLong("beforeTime") == null && call.getInt("offset") != null) repo.dao.query(call.getString("search") ?: "", call.getBoolean("starred") ?: false, tag, limit + 1, (call.getInt("offset") ?: 0).coerceAtLeast(0), call.getBoolean("located") ?: false) else repo.dao.page(call.getString("search") ?: "", call.getBoolean("starred") ?: false, tag, limit + 1, call.getLong("beforeTime"), call.getString("beforeId") ?: "", call.getBoolean("located") ?: false)
+        val order = call.getString("order") ?: "newest"
+        val checklistOnly = call.getBoolean("checklistOnly") ?: false
+        require(order in listOf("newest", "checklist")) { "Unknown thought order." }
+        val rows = if (order == "checklist") {
+            require(call.getString("tagId")?.let { repo.dao.tag(it)?.type } == "checklist") { "Choose a Checklist category." }
+            require(call.getLong("beforeTime") == null || call.data.opt("beforeCompleted") is Boolean) { "Reload this checklist before loading more thoughts." }
+            repo.dao.checklistPage(call.getString("search") ?: "", call.getBoolean("starred") ?: false, tag, limit + 1, call.getLong("beforeTime"), call.getString("beforeId") ?: "", call.getBoolean("beforeCompleted") ?: false, call.getBoolean("located") ?: false, if (call.getLong("beforeTime") == null) (call.getInt("offset") ?: 0).coerceAtLeast(0) else 0)
+        } else if (call.getLong("beforeTime") == null && call.getInt("offset") != null) repo.dao.query(call.getString("search") ?: "", call.getBoolean("starred") ?: false, tag, limit + 1, (call.getInt("offset") ?: 0).coerceAtLeast(0), call.getBoolean("located") ?: false, checklistOnly) else repo.dao.page(call.getString("search") ?: "", call.getBoolean("starred") ?: false, tag, limit + 1, call.getLong("beforeTime"), call.getString("beforeId") ?: "", call.getBoolean("located") ?: false, checklistOnly)
         JSObject().put("entries", JSONArray(rows.take(limit).map { repo.entryJson(it) })).put("hasMore", rows.size > limit)
     }
     @PluginMethod fun getEntry(call: PluginCall) = task(call) { repo -> JSObject().put("entry", repo.dao.entry(requireNotNull(call.getString("id")))?.let { repo.entryJson(it) } ?: org.json.JSONObject.NULL) }
@@ -132,9 +139,18 @@ class MuseamoPlugin : Plugin() {
         MediaFiles(context, repo).cleanup(); JSObject()
     }
     @PluginMethod fun setStar(call: PluginCall) = task(call, true) { repo -> val row = requireNotNull(repo.dao.entry(requireNotNull(call.getString("id")))) { "This thought no longer exists." }; repo.dao.updateEntry(row.copy(starred = call.getBoolean("starred") ?: false)); activity.runOnUiThread { activity.window.decorView.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP) }; JSObject() }
+    @PluginMethod fun setCompleted(call: PluginCall) = task(call, true) { repo ->
+        val completed = call.data.opt("completed")
+        require(completed is Boolean) { "Invalid completed state." }
+        repo.setCompleted(requireNotNull(call.getString("id")), completed)
+        JSObject()
+    }
     @PluginMethod fun deleteEntry(call: PluginCall) = task(call, true) { repo -> repo.delete(requireNotNull(call.getString("id"))); JSObject() }
     @PluginMethod fun restoreEntry(call: PluginCall) = task(call, true) { repo -> repo.restore(Backup.entry(requireNotNull(call.getObject("entry")))); JSObject() }
-    @PluginMethod fun saveTag(call: PluginCall) = task(call, true) { repo -> repo.saveTag(call.getString("id"), requireNotNull(call.getString("name"))); JSObject() }
+    @PluginMethod fun saveTag(call: PluginCall) = task(call, true) { repo ->
+        require(!call.data.has("type") || call.data.opt("type") is String) { "Invalid category type." }
+        repo.saveTag(call.getString("id"), requireNotNull(call.getString("name")), call.getString("type")); JSObject()
+    }
     @PluginMethod fun deleteTag(call: PluginCall) = task(call, true) { repo -> repo.removeTag(requireNotNull(call.getString("id"))); JSObject() }
     @PluginMethod fun saveProfile(call: PluginCall) = task(call, true) { repo -> repo.saveProfile(Backup.profile(requireNotNull(call.getObject("profile")))); JSObject() }
     @PluginMethod fun getDraft(call: PluginCall) = task(call) { repo ->

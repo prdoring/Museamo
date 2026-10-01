@@ -91,15 +91,18 @@ class WidgetConfigActivity : NativeScreen() {
     private fun updateTags() {
         if (!::tagsButton.isInitialized) return
         modeHelp.text = if (modes.checkedRadioButtonId == R.id.mode_picker) "Adds a tag picker to the widget. Choose one tag on your homescreen before writing. You can add or change tags in the composer." else "New thoughts start with the tags below. Choose none for a general-purpose widget. You can still change tags while writing."
-        preview.text = "${labelInput.text}" + (if (modes.checkedRadioButtonId == R.id.mode_picker) "     # ${tags.find { it.id == pickerTag }?.name ?: "No tag"} ▾" else "") + "     ↗"
-        tagsButton.text = if (modes.checkedRadioButtonId == R.id.mode_picker) "Starting tag: " + (tags.find { it.id == pickerTag }?.name ?: "No tag") else tags.filter { it.id in selected }.joinToString(", ") { it.name }.let { "Default tags: " + it.ifEmpty { "None — choose tags" } }
+        val startingTag = tags.find { it.id == pickerTag }
+        preview.text = android.text.TextUtils.concat(labelInput.text, if (modes.checkedRadioButtonId == R.id.mode_picker) android.text.TextUtils.concat("     # ", startingTag?.displayLabel(this) ?: "No tag", " ▾") else "", "     ↗")
+        val defaults = tags.filter { it.id in selected }
+        tagsButton.text = if (modes.checkedRadioButtonId == R.id.mode_picker) android.text.TextUtils.concat("Starting tag: ", startingTag?.displayLabel(this) ?: "No tag")
+            else android.text.TextUtils.concat("Default tags: ", if (defaults.isEmpty()) "None — choose tags" else android.text.TextUtils.concat(*defaults.flatMapIndexed { index, tag -> listOf<CharSequence>(if (index > 0) ", " else "", tag.displayLabel(this)) }.toTypedArray()))
     }
     private fun chooseTags() {
         if (modes.checkedRadioButtonId == R.id.mode_picker) {
-            AlertDialog.Builder(this).setTitle("Tag selected when this widget is added").setSingleChoiceItems((listOf("No tag") + tags.map { it.name }).toTypedArray(), tags.indexOfFirst { it.id == pickerTag } + 1) { dialog, index -> pickerTag = if (index == 0) null else tags[index - 1].id; updateTags(); dialog.dismiss() }.setNegativeButton("Cancel", null).show()
+            AlertDialog.Builder(this).setTitle("Tag selected when this widget is added").setSingleChoiceItems((listOf<CharSequence>("No tag") + tags.map { it.displayLabel(this) }).toTypedArray(), tags.indexOfFirst { it.id == pickerTag } + 1) { dialog, index -> pickerTag = if (index == 0) null else tags[index - 1].id; updateTags(); dialog.dismiss() }.setNegativeButton("Cancel", null).show()
         } else {
             val draftTags = selected.toMutableSet()
-            AlertDialog.Builder(this).setTitle("Tags for new thoughts").setMultiChoiceItems(tags.map { it.name }.toTypedArray(), tags.map { it.id in selected }.toBooleanArray()) { _, index, checked -> if (checked) draftTags.add(tags[index].id) else draftTags.remove(tags[index].id) }.setPositiveButton("Done") { _, _ -> selected = draftTags; updateTags() }.setNegativeButton("Cancel", null).setNeutralButton("No tag") { _, _ -> selected.clear(); updateTags() }.show()
+            AlertDialog.Builder(this).setTitle("Tags for new thoughts").setMultiChoiceItems(tags.map { it.displayLabel(this) }.toTypedArray(), tags.map { it.id in selected }.toBooleanArray()) { _, index, checked -> if (checked) draftTags.add(tags[index].id) else draftTags.remove(tags[index].id) }.setPositiveButton("Done") { _, _ -> selected = draftTags; updateTags() }.setNegativeButton("Cancel", null).setNeutralButton("No tag") { _, _ -> selected.clear(); updateTags() }.show()
         }
     }
     private fun saveConfiguration() {

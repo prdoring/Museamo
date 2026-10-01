@@ -17,11 +17,13 @@ import androidx.test.espresso.matcher.ViewMatchers.*
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Rule
 import java.io.File
 import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
 
 class MediaCaptureTest {
+    @get:Rule val location = ManualLocationRule()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
     private fun <T> repository(block: (Repository) -> T): T = Store.executor.submit(Callable { block(Store.get(context)) }).get(20, TimeUnit.SECONDS)
     private fun settle() { repository { }; InstrumentationRegistry.getInstrumentation().waitForIdleSync() }
@@ -31,7 +33,10 @@ class MediaCaptureTest {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val pickerIntent = ActivityResultContracts.PickMultipleVisualMedia(10).createIntent(context, PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-        val profile = repository { repo -> ProfileRow(uid(), "Media widget", "fixed").also { repo.saveProfile(it) } }
+        val profile = repository { repo ->
+            val tag = repo.saveTag(null, "Photo checklist ${uid()}", "checklist")
+            ProfileRow(uid(), "Media widget", "fixed", jsonIds(listOf(tag.id))).also { repo.saveProfile(it) }
+        }
         var entryId: String? = null
         try {
             ActivityScenario.launch<CaptureActivity>(Intent(context, CaptureActivity::class.java).putExtra("profileId", profile.id)).use { scenario ->
@@ -73,6 +78,10 @@ class MediaCaptureTest {
                 androidx.test.espresso.Espresso.closeSoftKeyboard()
                 onView(withContentDescription(file.name)).perform(scrollTo()).check(androidx.test.espresso.assertion.ViewAssertions.matches(isDisplayed()))
                 onView(withContentDescription("Send thought")).perform(click()); settle()
+                assertEquals(draft.mediaIds, repository { it.dao.entry(draft.entryId)!!.mediaIds })
+                assertFalse(repository { it.dao.entry(draft.entryId)!!.completed })
+                repository { it.setCompleted(draft.entryId, true) }
+                assertTrue(repository { it.dao.entry(draft.entryId)!!.completed })
                 assertEquals(draft.mediaIds, repository { it.dao.entry(draft.entryId)!!.mediaIds })
                 assertNull(repository { it.dao.draft(profile.id) })
             }

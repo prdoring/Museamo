@@ -5,11 +5,16 @@ import { Post } from "./Thoughts";
 export function Feed({
   entries,
   tags,
+  checklist,
+  categoryId,
+  complete,
+  pendingCompletions,
   loading,
   more,
   newThoughts,
   query,
   gems,
+  todosOnly = false,
   reload,
   older,
   star,
@@ -22,11 +27,16 @@ export function Feed({
   entries: Entry[];
   openLocation: (entry: Entry) => void;
   tags: Tag[];
+  checklist: boolean;
+  categoryId?: string;
+  complete: (entry: Entry) => void;
+  pendingCompletions: ReadonlySet<string>;
   loading: boolean;
   more: boolean;
   newThoughts: boolean;
   query: string;
   gems: boolean;
+  todosOnly?: boolean;
   reload: () => void;
   older: () => void;
   star: (e: Entry) => void;
@@ -36,7 +46,7 @@ export function Feed({
   report: (s: string) => void;
 }) {
   return (
-    <section className="feed" aria-label="Thoughts" aria-busy={loading}>
+    <section className={"feed" + (checklist ? " checklist-feed" : "")} aria-label="Thoughts" aria-busy={loading}>
       {newThoughts && (
         <button className="new-thoughts" onClick={reload}>
           New thoughts <PaperIcon name="send" size={16} />
@@ -50,7 +60,9 @@ export function Feed({
             <PaperIcon name={gems ? "star" : "document"} size={48} />
             <h2>
               {query
-                ? "No matching thoughts"
+                ? todosOnly ? "No matching to-dos" : "No matching thoughts"
+                : todosOnly
+                  ? "No to-do items yet."
                 : gems
                   ? "Keep the good ones close."
                   : "No thoughts yet."}
@@ -58,6 +70,8 @@ export function Feed({
             <p>
               {query
                 ? "Try a different word or phrase."
+                : todosOnly
+                  ? "Turn on Checklist for a tag to see its thoughts here."
                 : gems
                   ? "Star a thought to find it here."
                   : "Send yourself the first one."}
@@ -67,15 +81,24 @@ export function Feed({
       )}
       {entries.map((entry, i) => (
         <div key={entry.id}>
-          {(i === 0 ||
-            dayLabel(entries[i - 1].createdAt) !==
-              dayLabel(entry.createdAt)) && (
+          {checklist && (i === 0 || entries[i - 1].completed !== entry.completed) && (
+            <div className="checklist-heading">
+              <h2 className="checklist-section">{entry.completed ? "Checked" : "Unchecked"}</h2>
+              <span className="day-divider">{dayLabel(entry.createdAt)}</span>
+            </div>
+          )}
+          {(checklist
+            ? i > 0 && entries[i - 1].completed === entry.completed && dayLabel(entries[i - 1].createdAt) !== dayLabel(entry.createdAt)
+            : i === 0 || dayLabel(entries[i - 1].createdAt) !== dayLabel(entry.createdAt)) && (
             <div className="day-divider">{dayLabel(entry.createdAt)}</div>
           )}
           <Post
             entry={entry}
             openLocation={openLocation}
             tags={tags}
+            checklistCategoryId={checklist ? categoryId : undefined}
+            complete={complete}
+            completionPending={pendingCompletions.has(entry.id)}
             star={() => star(entry)}
             edit={() => edit(entry)}
             remove={() => remove(entry)}
@@ -85,8 +108,8 @@ export function Feed({
         </div>
       ))}
       {more && (
-        <button className="load-more secondary" onClick={older}>
-          Load older thoughts
+        <button className="load-more secondary" disabled={loading || (checklist && pendingCompletions.size > 0)} onClick={older}>
+          {checklist ? "Load more thoughts" : "Load older thoughts"}
         </button>
       )}
     </section>

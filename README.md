@@ -30,6 +30,16 @@ Long-press your launcher, open Widgets, and add Museamo. Choose a label and eith
 
 Stream shows everything, Gems shows starred thoughts, and Tags provides collections. Settings manages widgets and portable ZIP backups (including original attachments). Uninstalling or clearing app storage removes local data: keep exports somewhere safe. Android cloud backup and device-transfer backup are disabled for app data. Exports are unencrypted ZIP archives; choose their destination yourself. Existing version 1 JSON backups remain importable.
 
+On the Tags page, open a tag’s edit menu and turn on **Checklist**. Every thought with that tag gets a checkbox throughout the app, including Stream, Gems, and map cards. Checking it crosses out its text. Checklist categories show compact rows with unchecked thoughts first, newest first within each group. Open an item’s menu for its timestamp, location, and Gems action. A thought with multiple Checklist tags shares one checked state. Turning Checklist off or removing its last Checklist tag hides the checkbox and remembers its state for later.
+
+Tap the **checklist icon** in the Stream header to show only thoughts belonging to Checklist tags. It includes checked and unchecked items from every Checklist category, keeps newest-first order, and works with search and pagination. Tap it again to return to all thoughts.
+
+Widgets and native tag pickers show a small checklist icon beside Checklist tags. Capture and draft behavior stays the same; newly captured thoughts start unchecked. Backup ZIPs now use manifest version 4 and preserve category types and completion. Versions 1–3 remain importable. See [checklist verification](docs/checklist-verification.md).
+
+Locations show a short label such as “Trader Joe's, Portland OR,” “Portland OR,” or “Antwerp, Belgium.” Full addresses remain stored, searchable, and included in backups. Place names depend on available geocoding metadata or a custom name you enter.
+
+Before updating a device with important thoughts, use **Settings → Backup → Export** and keep the archive outside the app. Install the APK as an update over the existing app. Keep the existing installation if Android refuses the update; uninstalling or clearing app storage deletes local data. ZIP exports include posted thoughts and attachments; unfinished drafts are retained by an in-place update but are not included in the archive.
+
 ## Architecture and validation
 
 See [architecture](docs/architecture.md) for native bridge, persistence, and future routing contracts. See [device checklist](docs/device-checklist.md) for launcher checks that require hardware. No publishing integrations, account system, or analytics are implemented.

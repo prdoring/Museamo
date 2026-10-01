@@ -2,6 +2,7 @@ import { Presence, Disclosure, useExiting, lockOverlay, reducedMotion } from "./
 import { MediaGallery, AttachmentEditor } from "./Media";
 import { type Attachment } from "../media";
 import { PaperIcon } from "./PaperIcon";
+import { ChecklistToggle } from "./Checklist";
 import { FormattedText, copyFormatted } from "./FormattedText";
 import { type Format } from "../formatting";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -24,7 +25,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { bridge, isNative, locationLabel, locationStatusMessage, type PostLocation, type Entry, type Tag } from "../data";
+import { bridge, isNative, isChecklistEntry, locationLabel, locationStatusMessage, type PostLocation, type Entry, type Tag } from "../data";
 import {
   activeHashtag,
   hashtags,
@@ -54,7 +55,7 @@ export function Sheet({
     const focusable = () =>
       Array.from(
         ref.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]',
         ) || [],
       );
     (
@@ -123,6 +124,9 @@ export function Sheet({
 export function Post({
   entry,
   tags,
+  checklistCategoryId,
+  complete,
+  completionPending,
   star,
   edit,
   remove,
@@ -133,12 +137,18 @@ export function Post({
   entry: Entry;
   openLocation?: (entry: Entry) => void;
   tags: Tag[];
+  checklistCategoryId?: string;
+  complete: (entry: Entry) => void;
+  completionPending: boolean;
   star: () => void;
   edit: () => void;
   remove: () => void;
   openTag: (id: string) => void;
   report: (message: string) => void;
 }) {
+  const checklist = isChecklistEntry(entry, tags);
+  const compact = checklist && !!checklistCategoryId;
+  const visibleTags = tags.filter(t => entry.tagIds.includes(t.id) && (!compact || t.id !== checklistCategoryId));
   const [expanded, setExpanded] = useState(false),
     [overflows, setOverflows] = useState(false),
     [menu, setMenu] = useState(false);
@@ -166,9 +176,19 @@ export function Post({
     return () => observer.disconnect();
   }, [entry.text, expanded]);
 
+  const actions = <button
+    className="icon-button post-actions"
+    aria-label={compact && entry.starred ? "Thought actions, saved to Gems" : "Thought actions"}
+    aria-expanded={menu}
+    onClick={() => setMenu(!menu)}
+  >
+    <MoreHorizontal size={21} />
+    {compact && entry.starred && <Star className="post-gem-marker" size={10} fill="currentColor" aria-hidden="true" />}
+  </button>;
+
   return (
-    <article className="post">
-      <div className="post-top">
+    <article className={"post" + (checklist ? " post-checklist" : "") + (compact ? " post-compact" : "") + (compact && !entry.text.trim() ? " post-attachment-only" : "")} data-entry-id={entry.id}>
+      {!compact && <div className="post-top">
         <time dateTime={new Date(entry.createdAt).toISOString()}>
           {new Date(entry.createdAt).toLocaleTimeString([], {
             hour: "numeric",
@@ -176,6 +196,7 @@ export function Post({
           })}
           {entry.updatedAt > entry.createdAt + 1000 && " · edited"}
         </time>
+        {checklist && <ChecklistToggle entry={entry} pending={completionPending} change={complete} />}
         <button
           className={
             "icon-button star-button " + (entry.starred ? "starred" : "")
@@ -186,19 +207,13 @@ export function Post({
         >
           <Star size={19} fill={entry.starred ? "currentColor" : "none"} />
         </button>
-        <button
-          className="icon-button"
-          aria-label="Thought actions"
-          aria-expanded={menu}
-          onClick={() => setMenu(!menu)}
-        >
-          <MoreHorizontal size={21} />
-        </button>
-      </div>
-      <div ref={copy}>
+        {actions}
+      </div>}
+      {compact && <ChecklistToggle entry={entry} pending={completionPending} change={complete} />}
+      <div className="post-copy" ref={copy}>
       <div
         ref={body}
-        className={"post-text rich-text " + (expanded ? "" : "clamped")}
+        className={"post-text rich-text " + (expanded ? "" : "clamped ") + (checklist && entry.completed ? "checklist-completed" : "")}
       >
         <FormattedText
           text={entry.text}
@@ -208,19 +223,17 @@ export function Post({
         />
       </div>
       </div>
+      {compact && actions}
       {overflows && (
         <button className="text-button" onClick={() => { previousHeight.current = copy.current?.getBoundingClientRect().height; setExpanded(!expanded); }}>
           {expanded ? "Show less" : "Show more"}
         </button>
       )}
-      {entry.location && <button className="location-label" onClick={() => openLocation?.(entry)}>⌖ {locationLabel(entry.location)}</button>}
+      {!compact && entry.location && <button className="location-label" onClick={() => openLocation?.(entry)}>⌖ {locationLabel(entry.location)}</button>}
       <MediaGallery attachments={entry.attachments} text={entry.text} />
-      {!!entry.tagIds.length && (
+      {!!visibleTags.length && (
         <div className="chips post-tags">
-          {entry.tagIds
-            .map((id) => tags.find((t) => t.id === id))
-            .filter((t): t is Tag => !!t)
-            .map((t) => (
+          {visibleTags.map((t) => (
               <button className="chip" key={t.id} onClick={() => openTag(t.id)}>
                 # {t.name}
               </button>
@@ -229,6 +242,20 @@ export function Post({
       )}
       <Presence>{menu && (
         <Sheet title="Thought actions" close={() => setMenu(false)}>
+          {compact && <>
+            <p className="post-details"><time dateTime={new Date(entry.createdAt).toISOString()}>
+              {new Date(entry.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+              {entry.updatedAt > entry.createdAt + 1000 && " · edited"}
+            </time></p>
+            <button className="menu-row" onClick={() => { setMenu(false); star(); }}>
+              <Star size={19} fill={entry.starred ? "currentColor" : "none"} />
+              {entry.starred ? "Remove from Gems" : "Save to Gems"}
+            </button>
+            {entry.location && <button className="menu-row" onClick={() => { setMenu(false); openLocation?.(entry); }}>
+              <MapPin size={19} />
+              {locationLabel(entry.location)}
+            </button>}
+          </>}
           <button
             className="menu-row"
             onClick={() => {
@@ -669,6 +696,7 @@ export function TagEditor({
   done: () => Promise<void>;
 }) {
   const [name, setName] = useState(tag === "new" ? "" : tag.name),
+    [type, setType] = useState<Tag["type"]>(tag === "new" ? "standard" : tag.type),
     [confirm, setConfirm] = useState(false),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -677,7 +705,7 @@ export function TagEditor({
     try {
       if (remove && tag !== "new") await bridge.deleteTag({ id: tag.id });
       else
-        await bridge.saveTag({ id: tag === "new" ? undefined : tag.id, name });
+        await bridge.saveTag({ id: tag === "new" ? undefined : tag.id, name, type });
       await done();
       close();
     } catch (e) {
@@ -702,6 +730,19 @@ export function TagEditor({
           onChange={(e) => setName(e.target.value)}
         />
       </label>
+      <button
+        type="button"
+        className="checklist-setting"
+        role="switch"
+        aria-checked={type === "checklist"}
+        aria-label="Checklist"
+        aria-describedby="checklist-setting-description"
+        disabled={busy}
+        onClick={() => setType(type === "checklist" ? "standard" : "checklist")}
+      >
+        <span><strong>Checklist</strong><span id="checklist-setting-description">Check off thoughts with this tag.</span></span>
+        <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
+      </button>
       {error && (
         <p className="error" role="alert">
           {error}
