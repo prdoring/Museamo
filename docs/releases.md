@@ -16,6 +16,8 @@ Public stable APKs need a dedicated signing key. On Windows, set it up once:
 npm run release:signing
 ```
 
+Run this setup in the terminal you will use for releases. An agent's execution environment can have a different view of user-profile storage even when the Windows account and displayed paths match; successful agent-side checks do not establish that your terminal is configured.
+
 With no signing variables set, this creates a 4096-bit RSA key valid for 10,000 days in `%LOCALAPPDATA%\Museamo\release-signing\museamo-release.p12`. The keystore password is randomly generated and saved in `signing.json` using Windows account encryption (DPAPI). Access to the directory is restricted to your account, administrators, and SYSTEM. These files stay outside the repository. Repeating setup verifies the existing key; it never replaces it.
 
 `npm run release` and signed `release:build` commands load the saved key automatically. Passwords are passed to build tools only in their process environment, never in command-line arguments, release manifests, or GitHub secrets.

@@ -29,6 +29,8 @@ See [release instructions](releases.md) and [licensing](licensing.md). Local dia
 
 Also verified on October 2, 2026:
 
+These signing checks ran in the agent's execution environment. The maintainer's terminal subsequently reported that the configuration was absent at the same path under the same Windows account. The maintainer must run `npm run release:signing` in the terminal used for publishing before creating a retained backup or releasing. The test key below does not establish that the maintainer's terminal has been configured.
+
 - A permanent 4096-bit RSA release key was created outside the repository, with its generated password protected by Windows account encryption. Directory permissions allow the owner, administrators, and SYSTEM only.
 - Automatic credential loading worked without manual signing variables. Repeating setup retained the same certificate fingerprint. All 5 release-tooling tests passed, including saved credential loading, explicit overrides, partial overrides, malformed configuration, and lost keys.
 - `:app:assembleRelease -PsyncCoreRelease` succeeded with `--no-daemon`. APK signature verification passed, the certificate matched the configured release key, and all four Android native libraries were present.
