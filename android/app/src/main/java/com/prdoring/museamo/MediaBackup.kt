@@ -15,8 +15,8 @@ object MediaBackup {
     fun export(context: Context, repo: Repository, output: OutputStream) {
         val files = MediaFiles(context, repo)
         // Caller runs on the repository executor, so this snapshot and its files cannot change.
-        val root = JSONObject(Backup.export(repo, version = 4))
-        val rows = repo.dao.entries().flatMap { ids(it.mediaIds) }.distinct().map { requireNotNull(repo.dao.media(it)) }
+        val root = JSONObject(Backup.export(repo, version = 5))
+        val rows = (repo.dao.entries().flatMap { ids(it.mediaIds) } + repo.dao.recovery().flatMap { SyncJournal.mediaIds(JSONObject(it.payload)) }).distinct().map { requireNotNull(repo.dao.media(it)) }
         root.put("media", JSONArray(rows.map { it.json() }))
         val manifest = root.toString(2).toByteArray(Charsets.UTF_8)
         require(manifest.size <= Backup.MAX_BYTES) { "Backup metadata exceeds 25 MiB." }
@@ -47,8 +47,9 @@ object MediaBackup {
         try {
             ZipInputStream(buffered).use { zip ->
                 require(zip.nextEntry?.name == "manifest.json") { "Choose a Museamo archive with manifest.json first." }
-                val root = JSONObject(readManifest(zip))
-                require(root.get("format") == "museamo" && root.get("version") in listOf(2, 3, 4)) { "Unsupported backup version." }
+                val manifest = readManifest(zip)
+                val root = if (SyncCore.available()) SyncCore.request(JSONObject().put("action", "parseJson").put("text", manifest)) else JSONObject(manifest)
+                require(root.get("format") == "museamo" && root.get("version") in listOf(2, 3, 4, 5)) { "Unsupported backup version." }
                 val array = root.getJSONArray("media")
                 val rows = (0 until array.length()).map { parseMedia(array.getJSONObject(it)) }
                 require(rows.map { it.id }.distinct().size == rows.size) { "Duplicate media IDs." }
@@ -59,12 +60,13 @@ object MediaBackup {
                     val row = expected[entry.name] ?: throw IllegalArgumentException("Unexpected or unsafe archive path.")
                     require(!entry.isDirectory && seen.add(entry.name)) { "Duplicate media file." }
                     require(row.byteSize + MediaFiles.RESERVE < staging.usableSpace) { "Not enough device storage to import this backup." }
-                    val result = File(staging, row.id).outputStream().use { files.copyChecked(zip, it, row.byteSize) }
+                    val result = java.io.FileOutputStream(File(staging, row.id)).use { stream -> files.copyChecked(zip, stream, row.byteSize).also { stream.fd.sync() } }
                     require(result.first == row.byteSize && result.second == row.checksum) { "An attachment is damaged or incomplete." }
                 }
                 require(seen == expected.keys) { "Backup is missing attachment files." }
                 val entries = root.getJSONArray("entries")
-                val referenced = (0 until entries.length()).flatMap { ids(Backup.entry(entries.getJSONObject(it)).mediaIds) }.toSet()
+                val recovery = root.optJSONArray("recovery") ?: JSONArray()
+                val referenced = ((0 until entries.length()).flatMap { ids(Backup.entry(entries.getJSONObject(it)).mediaIds) } + (0 until recovery.length()).flatMap { SyncJournal.mediaIds(recovery.getJSONObject(it).getJSONObject("payload")) }).toSet()
                 require(referenced == rows.map { it.id }.toSet()) { "Backup has missing or unreferenced media." }
                 val mapping = mutableMapOf<String, String>()
                 val newRows = mutableListOf<MediaRow>()
@@ -84,6 +86,14 @@ object MediaBackup {
                     val entry = entries.getJSONObject(i)
                     entry.put("attachmentIds", JSONArray(ids(Backup.entry(entry).mediaIds).map { mapping.getValue(it) }))
                 }
+                for (i in 0 until recovery.length()) {
+                    val payload = recovery.getJSONObject(i).getJSONObject("payload")
+                    val mediaIds = SyncJournal.mediaIds(payload)
+                    if (mediaIds.isNotEmpty()) {
+                        payload.put("attachmentIds", JSONArray(mediaIds.map { mapping.getValue(it) }))
+                        payload.optJSONArray("attachments")?.let { attachments -> for (index in 0 until attachments.length()) { val media = attachments.getJSONObject(index); media.put("id", mapping.getValue(media.getString("id"))) } }
+                    }
+                }
                 repo.db.runInTransaction {
                     newRows.forEach { repo.dao.insertMedia(it) }
                     Backup.import(repo, root.toString(), withMedia = true)
@@ -101,7 +111,7 @@ object MediaBackup {
         require(value is Number && value.toDouble().isFinite() && value.toDouble() == value.toLong().toDouble() && value.toLong() in 0..maximum) { "Invalid $key." }
         return value.toLong()
     }
-    private fun parseMedia(o: JSONObject): MediaRow {
+    fun parseMedia(o: JSONObject): MediaRow {
         val id = string(o, "id"); require(UUID.fromString(id).toString() == id)
         val kind = string(o, "kind"); require(kind in setOf("image", "video"))
         val mime = string(o, "mimeType"); require(mime in if (kind == "image") MediaFiles.IMAGE_TYPES else MediaFiles.VIDEO_TYPES)

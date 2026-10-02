@@ -25,7 +25,8 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { bridge, isNative, isChecklistEntry, locationLabel, locationStatusMessage, type PostLocation, type Entry, type Tag } from "../data";
+import { bridge, isNative, isChecklistEntry, tagDisplayName, locationLabel, locationStatusMessage, type PostLocation, type Entry, type Tag } from "../data";
+import { capabilities } from "../platform";
 import {
   activeHashtag,
   hashtags,
@@ -235,7 +236,7 @@ export function Post({
         <div className="chips post-tags">
           {visibleTags.map((t) => (
               <button className="chip" key={t.id} onClick={() => openTag(t.id)}>
-                # {t.name}
+                # {tagDisplayName(t, tags)}
               </button>
             ))}
         </div>
@@ -304,6 +305,8 @@ export function Editor({
   close,
   refreshTags,
   discard,
+  reload,
+  saveCopy,
 }: {
   initial: { text: string; tagIds: string[]; attachments?: Attachment[]; location?: PostLocation | null };
   tags: Tag[];
@@ -313,6 +316,8 @@ export function Editor({
   close: () => void;
   refreshTags: () => Promise<void>;
   discard?: () => Promise<void>;
+  reload?: () => Promise<void>;
+  saveCopy?: (text: string, ids: string[], attachments: Attachment[], location?: PostLocation | null) => Promise<void>;
 }) {
   const [text, setText] = useState(initial.text),
     [selected, setSelected] = useState(() =>
@@ -337,6 +342,7 @@ export function Editor({
     [cursorText, setCursorText] = useState({ text: "", offset: 0 }),
     [showFormatting, setShowFormatting] = useState(false);
   const [location, setLocation] = useState(initial.location);
+  const [stale, setStale] = useState(false);
   const [locating, setLocating] = useState(false);
   const [showLocation, setShowLocation] = useState(false);
   const [locationMessage, setLocationMessage] = useState("");
@@ -432,11 +438,13 @@ export function Editor({
     pending.current = true;
     setBusy(true);
     setError("");
+    setStale(false);
     try {
       ++locationRequest.current;
       await save(text, selected, attachments, locationEdited.current ? location ?? null : undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save. Try again.");
+      setStale(!!reload && (typeof e === "object" && e !== null && "code" in e && e.code === "STALE_REVISION" || /changed|revision|no longer exists/i.test(e instanceof Error ? e.message : String(e))));
     } finally {
       pending.current = false;
       setBusy(false);
@@ -521,7 +529,7 @@ export function Editor({
                     key={t.id}
                     onClick={() => insert(t.name)}
                   >
-                    # {t.name}
+                    # {tagDisplayName(t, tags)}
                   </button>
                 ))}
               {active.query.trim() &&
@@ -556,7 +564,7 @@ export function Editor({
                   aria-label={`Remove tag ${t.name}`}
                   onClick={() => remove(t)}
                 >
-                  # {t.name}
+                  # {tagDisplayName(t, tags)}
                   <PaperIcon name="close" size={14} />
                 </button>
               ))}
@@ -614,7 +622,7 @@ export function Editor({
                         }
                       >
                         <Hash size={16} />
-                        {t.name}
+                        {tagDisplayName(t, tags)}
                         {chosen && <PaperIcon name="check" size={17} />}
                       </button>
                     );
@@ -638,21 +646,25 @@ export function Editor({
             </Disclosure>
           )}</Presence>
           {error && (
-            <p className="error" role="alert">
-              {error}{" "}
-              <button onClick={() => void submit()} disabled={busy || importing}>
-                Retry save
-              </button>
-            </p>
+            <div className="error" role="alert">
+              <p>{error}</p>
+              {stale ? <>
+                <p>Your edits are still here. Save them as a new thought, or replace them with the current saved version.</p>
+                <div className="action-row">
+                  {saveCopy && <button disabled={busy || importing} onClick={() => { if (pending.current) return; pending.current = true; setBusy(true); void saveCopy(text, selected, attachments, location).catch(e => setError(e instanceof Error ? e.message : String(e))).finally(() => { pending.current = false; setBusy(false); }); }}>Save as new</button>}
+                  <button disabled={busy || importing} onClick={() => { if (pending.current) return; pending.current = true; setBusy(true); void reload?.().catch(e => setError(e instanceof Error ? e.message : String(e))).finally(() => { pending.current = false; setBusy(false); }); }}>Load current version</button>
+                </div>
+              </> : <button onClick={() => void submit()} disabled={busy || importing}>Retry save</button>}
+            </div>
           )}
           <div className="composer-bar">
             <span className="composer-media-action" ref={setMediaToolbar} />
             <button className="composer-icon" type="button" aria-label="Text formatting" aria-expanded={showFormatting} disabled={busy || importing} onMouseDown={e => e.preventDefault()} onClick={() => { setShowFormatting(!showFormatting); setShowTags(false); setShowLocation(false); }}>Aa</button>
             <button className="composer-icon" type="button" aria-label="Add tag" aria-expanded={showTags} disabled={busy || importing} onClick={() => { setShowTags(!showTags); setShowFormatting(false); setShowLocation(false); }}><Hash size={22} /></button>
-            <button className={"composer-icon location-toggle" + (location ? " has-location" : "")} type="button" aria-label={locating ? "Finding location" : "Post location"} aria-expanded={showLocation} disabled={busy || importing || locating} onClick={() => {
+            {(capabilities.automaticLocation || location) && <button className={"composer-icon location-toggle" + (location ? " has-location" : "")} type="button" aria-label={locating ? "Finding location" : "Post location"} aria-expanded={showLocation} disabled={busy || importing || locating} onClick={() => {
               setShowFormatting(false); setShowTags(false);
               if (location) setShowLocation(!showLocation); else void requestLocation();
-            }}>{locating ? <LoaderCircle className="location-spinner" size={22} /> : <MapPin size={22} />}</button>
+            }}>{locating ? <LoaderCircle className="location-spinner" size={22} /> : <MapPin size={22} />}</button>}
             {capture && discard ? (
               <details>
                 <summary aria-label="Draft actions">

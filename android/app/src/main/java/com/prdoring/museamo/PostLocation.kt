@@ -28,9 +28,10 @@ object PostLocation {
             require(n is Number && n.toDouble().isFinite() && n.toDouble() in min..max) { "Invalid location $key." }
             return n.toDouble()
         }
+        val capturedAt = number("capturedAt", 0.0, Backup.MAX_TIMESTAMP.toDouble()); require(capturedAt == capturedAt.toLong().toDouble()) { "Invalid location capturedAt." }
         val result = JSONObject().put("latitude", number("latitude", -90.0, 90.0))
             .put("longitude", number("longitude", -180.0, 180.0))
-            .put("capturedAt", number("capturedAt", 0.0, 253402300799999.0).toLong())
+            .put("capturedAt", capturedAt.toLong())
         if (!value.isNull("accuracy")) result.put("accuracy", number("accuracy", 0.0, Double.MAX_VALUE))
         for (key in listOf("token", "name", "address", "locality", "userLabel", "city", "region", "country", "countryCode")) {
             if (!value.isNull(key)) {

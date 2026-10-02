@@ -21,3 +21,9 @@ artifacts/
 test-results/
 .tools/
 android/.kotlin/
+target/
+desktop/gen/
+android/app/src/main/jniLibs/
+desktop/icons/*
+!desktop/icons/icon.ico
+!desktop/icons/icon.png

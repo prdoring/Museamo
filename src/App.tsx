@@ -15,6 +15,7 @@ import {
   type Entry,
   type Library,
   type Tag,
+  tagDisplayName,
 } from "./data";
 import { LocationMap } from "./components/LocationMap";
 import { Editor, TagEditor, Sheet } from "./components/Thoughts";
@@ -23,11 +24,13 @@ import { Navigation, type Tab } from "./components/Navigation";
 import { Feed } from "./components/Feed";
 import { Settings } from "./components/Settings";
 import { SearchField, TagList } from "./components/LibraryViews";
+import { isPreview, isDesktop, capabilities } from "./platform";
+import { hasNewThoughtsAhead } from "./feedRefresh";
 type View = { tab: Tab; tagId?: string; query: string; settings?: boolean; checklistOnly?: boolean };
 export default function App() {
   const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system");
   useEffect(() => {
-    if (isNative) return;
+    if (!isPreview) return;
     if (previewTheme === "system") delete document.documentElement.dataset.previewTheme;
     else document.documentElement.dataset.previewTheme = previewTheme;
     return () => { delete document.documentElement.dataset.previewTheme; };
@@ -60,6 +63,13 @@ export default function App() {
     pendingStars = useRef(new Set<string>()),
     loadingRequest = useRef(0);
   const paginationValid = useRef(false);
+  const pendingRefresh = useRef(false);
+  function flushPendingRefresh() {
+    if (!pendingRefresh.current || selfMutation.current || composing.current) return;
+    pendingRefresh.current = false;
+    cache.current.clear();
+    void loadRef.current(false, true);
+  }
   const positions = useRef(new Map<string, number>()),
     cache = useRef(new Map<string, { entries: Entry[]; more: boolean }>());
   const key = (v: View) =>
@@ -69,13 +79,14 @@ export default function App() {
   async function refreshLibrary() {
     setLibrary(await bridge.library());
   }
-  async function load(append = false, keepPosition = false, movedId?: string) {
+  async function load(append = false, keepPosition = false, movedId?: string, notifyNewThoughts = false) {
     if (append && (!paginationValid.current || loadingRequest.current || completionRequests.current.size)) return;
     const request = ++version.current,
       current = viewRef.current;
     loadingRequest.current = request;
     if (!append) { paginationValid.current = false; setMore(false); }
     const last = append ? entriesRef.current.at(-1) : undefined;
+    const previousEntries = entriesRef.current;
     const scroll = window.scrollY;
     const anchor = keepPosition ? [...document.querySelectorAll<HTMLElement>("[data-entry-id]")]
       .find(el => el.dataset.entryId !== movedId && el.getBoundingClientRect().bottom > 0) : undefined;
@@ -110,7 +121,9 @@ export default function App() {
       paginationValid.current = true;
       setMore(page.hasMore);
       setLibrary(lib);
-      setNewThoughts(false);
+      setNewThoughts(previous => notifyNewThoughts
+        ? previous || hasNewThoughtsAhead(previousEntries, page.entries)
+        : false);
       cache.current.set(key(current), { entries: next, more: page.hasMore });
       if (keepPosition) requestAnimationFrame(() => {
         if (version.current !== request) return;
@@ -153,19 +166,23 @@ export default function App() {
     let disposed = false;
     let remove: (() => Promise<void>) | undefined;
     function changed() {
-      if (selfMutation.current || composing.current) return;
+      pendingRefresh.current = true;
+      ++version.current;
+      paginationValid.current = false;
       cache.current.clear();
-      if (viewRef.current.tagId || viewRef.current.checklistOnly) {
-        void loadRef.current(false, true);
-      } else if (window.scrollY > 120) {
-        setNewThoughts(true);
-        void refreshLibrary();
-      } else void loadRef.current(false, true);
+      if (selfMutation.current || composing.current) return;
+      pendingRefresh.current = false;
+      cache.current.clear();
+      // The same invalidation covers inserts, updates, and deletions. Always
+      // refresh entries; keep the reading anchor and announce only arrivals.
+      void loadRef.current(false, true, undefined,
+        window.scrollY > 120 && !viewRef.current.tagId && !viewRef.current.checklistOnly);
     }
     void bridge.addListener("dataChanged", changed).then((handle) => {
       if (disposed) void handle.remove();
       else remove = handle.remove;
-    });
+      if (!disposed) changed();
+    }).catch((e) => { if (!disposed) failure(e); });
     const resume = () => {
       if (document.visibilityState === "visible") changed();
     };
@@ -240,6 +257,7 @@ export default function App() {
       throw e;
     } finally {
       selfMutation.current--;
+      flushPendingRefresh();
     }
   }
   async function star(entry: Entry) {
@@ -266,7 +284,7 @@ export default function App() {
   async function remove(entry: Entry) {
     try {
       await mutate(
-        () => bridge.deleteEntry({ id: entry.id }),
+        () => bridge.deleteEntry({ id: entry.id, baseRevision: entry.revision }),
         () => {
           setEntries((old) => old.filter((e) => e.id !== entry.id));
           setDeleted((old) => [...old, entry]);
@@ -309,6 +327,7 @@ export default function App() {
       if (!completionRequests.current.size && viewRef.current.tab !== "map")
         await load(false, true, entry.id);
       selfMutation.current--;
+      flushPendingRefresh();
     }
   }
   async function saved(id?: string) {
@@ -337,7 +356,7 @@ export default function App() {
     if (composing.current) return;
     composing.current = true;
     try {
-      if (isNative) {
+      if (capabilities.nativeCapture) {
         const result = await bridge.compose({ tagId: view.tagId });
         if (!result.cancelled) await saved(result.entryId);
       } else setDraft((await bridge.getDraft({ tagId: view.tagId })).draft);
@@ -345,12 +364,13 @@ export default function App() {
       failure(e, () => void compose());
     } finally {
       composing.current = false;
+      flushPendingRefresh();
     }
   }
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isDesktop ? " desktop-shell" : ""}`}>
       <div inert={modal}>
-        {!isNative && (
+        {isPreview && (
           <div className="preview-strip">
             <span>Preview · resets on refresh</span>
             <button onClick={() => setPreviewTheme(previewTheme === "system" ? "light" : previewTheme === "light" ? "dark" : "system")} aria-label="Change preview theme">Theme: {previewTheme}</button>
@@ -383,7 +403,7 @@ export default function App() {
               {view.settings
                 ? "Settings"
                 : tag
-                  ? tag.name
+                  ? tagDisplayName(tag, library.tags)
                   : view.tab === "map" ? "Map" : view.tab === "gems"
                     ? "Gems"
                     : view.tab === "tags"
@@ -584,15 +604,25 @@ export default function App() {
       <Presence>{mapFocus && <Sheet title="Post location" close={() => setMapFocus(undefined)}><LocationMap focus={mapFocus} tags={library.tags} complete={complete} pendingCompletions={pendingCompletions} edit={entry => { setMapFocus(undefined); setEditing(entry); }} /></Sheet>}</Presence>
       <Presence>{editing && (
         <Editor
-          key={editing.id}
+          key={`${editing.id}/${editing.revision || editing.updatedAt}`}
           initial={editing}
           tags={library.tags}
           refreshTags={refreshLibrary}
           close={() => setEditing(undefined)}
+          reload={async () => {
+            const result = await bridge.getEntry({ id: editing.id });
+            if (!result.entry) throw new Error("This thought was deleted. Save your edits as a new thought to keep them.");
+            setEditing(result.entry);
+          }}
+          saveCopy={async (text, tagIds, attachments, location) => {
+            await mutate(() => bridge.restoreEntry({ entry: { ...editing, text, tagIds, attachments, location: location ?? null } }));
+            setEditing(undefined); setNotice("Saved as a new thought.");
+            await load(false, true);
+          }}
           save={async (text, tagIds, attachments, location) => {
             const entry = editing;
             await mutate(() =>
-              bridge.updateEntry({ id: entry.id, text, tagIds, ...(location !== undefined ? { location } : {}), attachmentIds: attachments.map(a => a.id) }),
+              bridge.updateEntry({ id: entry.id, baseRevision: entry.revision, text, tagIds, ...(location !== undefined ? { location } : {}), attachmentIds: attachments.map(a => a.id) }),
             );
             const updated = (await bridge.getEntry({ id: entry.id })).entry;
             setEntries((old) =>
@@ -630,11 +660,12 @@ export default function App() {
           save={async (text, tagIds, attachments, location) => {
             selfMutation.current++;
             try {
-              const id = preview.save({ ...draft, text, tagIds, attachments, ...(location !== undefined ? { location } : {}) });
+              const { entryId: id } = await bridge.commitDraft({ draft: { ...draft, text, tagIds, attachments, ...(location !== undefined ? { location } : {}) } });
               setDraft(undefined);
               await saved(id);
             } finally {
               selfMutation.current--;
+              flushPendingRefresh();
             }
           }}
         />

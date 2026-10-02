@@ -241,13 +241,13 @@ class CaptureActivity : NativeScreen() {
         val profileId = intent.getStringExtra("profileId")
         val initialTag = intent.getStringExtra("initialTag")
         val key = profileId ?: "app:${initialTag ?: "general"}"
-        work({ repo -> val profile = profileId?.let { requireNotNull(repo.dao.profile(it)) { "Configure this widget again." } }; val fresh = repo.dao.draft(key) == null; Triple(repo.draft(key, profile, initialTag), repo.dao.tags(), fresh) }) { (saved, allTags, notAttempted) ->
+        work({ repo -> val profile = profileId?.let { requireNotNull(repo.dao.profile(it)) { "Configure this widget again." } }; repo.prepareCaptureDraft(key, profile, initialTag, resuming = state != null) to repo.dao.tags() }) { (opening, allTags) ->
+            val saved = opening.draft
             tags = allTags
             draft = saved.copy(text = state?.getString("text") ?: saved.text, tagIds = jsonIds(ids(state?.getString("tagIds") ?: saved.tagIds).filter { id -> allTags.any { it.id == id } }))
-            val fresh = notAttempted && !saved.locationAttempted
             draft = draft!!.copy(locationAttempted = true)
             persist(); showLocation()
-            if (fresh || permissionGrantedPending) {
+            if (opening.captureLocation || permissionGrantedPending) {
                 permissionGrantedPending = false
                 if (LocationCapture.available(this)) captureLocation() else locationPermission.onOpen()
             }

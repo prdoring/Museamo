@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { PaperIcon } from "./PaperIcon";
 import { Download, Upload } from "lucide-react";
-import { bridge, isNative, preview, type Library } from "../data";
+import { bridge, preview, type Library } from "../data";
+import { isPreview, isDesktop, capabilities } from "../platform";
+import { Devices } from "./Devices";
+import { Recovery } from "./Recovery";
 export function Settings({
   library,
   report,
@@ -14,19 +17,30 @@ export function Settings({
   refresh: () => void;
 }) {
   const [locationEnabled, setLocationEnabled] = useState(false);
-  useEffect(() => { void run(async () => setLocationEnabled((await bridge.locationSettings()).enabled)); }, []);
+  const [startupEnabled, setStartupEnabled] = useState(false);
+  useEffect(() => {
+    if (capabilities.automaticLocation) void run(async () => setLocationEnabled((await bridge.locationSettings()).enabled));
+    if (isDesktop) void run(async () => setStartupEnabled((await bridge.getStartupSettings()).enabled));
+  }, []);
   return (
     <div className="settings">
-      <section>
+      {!isPreview && <Devices />}
+      <Recovery report={report} />
+      {isDesktop && <section>
+        <h2>Windows</h2>
+        <label className="startup-setting"><input type="checkbox" checked={startupEnabled} onChange={e => { const enabled = e.target.checked; void run(async () => setStartupEnabled((await bridge.setStartupEnabled({ enabled })).enabled)); }} /> Start Museamo when I sign in</label>
+        <p>Closing the window keeps Museamo in the system tray so linked devices can sync. Choose Quit from the tray menu to stop it.</p>
+      </section>}
+      {capabilities.automaticLocation && <section>
         <h2>Post locations</h2>
         <label><input type="checkbox" checked={locationEnabled} onChange={e => {
           const enabled = e.target.checked;
           void run(async () => { const result = await bridge.setLocationEnabled({ enabled }); setLocationEnabled(result.enabled); if (enabled && !result.enabled) report("Location permission was not granted. Posts will save without location."); });
         }} /> Automatically save location</label>
         <p>Museamo asks for location permission on first opening. After you allow it, every new post tries to add a location automatically—you do not need to press the pin. Tap the pin to skip location for one post, or turn this setting off for all new posts. If services are off or unavailable, your post saves without a location. No background tracking.</p>
-        <p className="muted">Address lookup may send coordinates to your device’s geocoding service. Opening maps requests map tiles from OpenStreetMap. Your post text and custom place names stay on this device.</p>
-      </section>
-      <section>
+        <p className="muted">Address lookup may send coordinates to your device’s geocoding service. Opening maps requests map tiles from OpenStreetMap. Saved locations sync only with devices you link.</p>
+      </section>}
+      {capabilities.widgets && <section>
         <h2>Widgets</h2>
         <p>
           Add Museamo from your homescreen’s widget menu. Choose fixed tags or a
@@ -61,11 +75,11 @@ export function Settings({
         {!library.profiles.length && (
           <p className="muted">Your widgets will appear here.</p>
         )}
-      </section>
+      </section>}
       <section>
         <h2>Backup</h2>
         <p>
-          Export a ZIP archive with your thoughts, original photos/videos, tags, and widgets. Older JSON backups can still be imported. Imports keep
+          Export a ZIP archive with your thoughts, Recovery, original photos/videos, tags, and widget settings. Older JSON backups can still be imported. Imports keep
           conflicting content as separate copies.
         </p>
         <div className="action-row">
@@ -99,11 +113,11 @@ export function Settings({
         <h2>About & storage</h2>
         <p>Museamo · a place for your thoughts.</p>
         <p className="muted">
-          Attachments stay on this device at their original quality. Linked media loads from its host when visible. No account or background uploads. Uninstalling
-          removes local data; export a backup first.
+          Original attachments stay in your local library and sync directly with devices you link. Linked media loads from its host when visible. No account or cloud sync. Removing
+          app data deletes your library; export a backup first.
         </p>
       </section>
-      {!isNative && (
+      {isPreview && (
         <section>
           <h2>Preview tools</h2>
           <p>Temporary examples, separate from your phone.</p>

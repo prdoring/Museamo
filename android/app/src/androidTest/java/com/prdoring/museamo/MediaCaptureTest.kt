@@ -42,6 +42,8 @@ class MediaCaptureTest {
             ActivityScenario.launch<CaptureActivity>(Intent(context, CaptureActivity::class.java).putExtra("profileId", profile.id)).use { scenario ->
                 settle(); settle(); settle()
                 androidx.test.espresso.Espresso.closeSoftKeyboard()
+                Thread.sleep(500) // The IME moves the toolbar while closing; let the synthetic picker touch land on it.
+                settle()
                 onView(withContentDescription("Attach photos/videos")).check(androidx.test.espresso.assertion.ViewAssertions.matches(isEnabled()))
                 val monitor = instrumentation.addMonitor(IntentFilter(pickerIntent.action), Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(uri)), true)
                 try { onView(withContentDescription("Attach photos/videos")).perform(click()) }

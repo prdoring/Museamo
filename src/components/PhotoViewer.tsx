@@ -45,8 +45,13 @@ export function PhotoViewer({ images, initial, close }: { images: (Attachment | 
     let alive = true;
     setUrl(""); setReady(false); setError(""); update(identity); lastTap.current.time = 0;
     const image = images[index];
-    void ("id" in image ? bridge.resolveMedia({ id: image.id }) : Promise.resolve({ url: image.url }))
-      .then(result => { if (alive) setUrl(result.url); }).catch(() => { if (alive) setError("This photo is unavailable."); });
+    void ("id" in image ? bridge.resolveMedia({ id: image.id }) : Promise.resolve({ url: image.url, availability: undefined }))
+      .then(result => {
+        if (!alive) return;
+        if (result.availability === "pending") setError("The original is waiting to sync from a linked device.");
+        else if (result.availability === "unsupported") setError("This device cannot preview this format. The original stays in your library and backups.");
+        else setUrl(result.url);
+      }).catch(() => { if (alive) setError("This photo is unavailable."); });
     return () => { alive = false; };
   }, [index, images]);
   useEffect(() => {

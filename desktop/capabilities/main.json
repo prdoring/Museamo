@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Only the bundled Museamo window can read and change the local library.",
+  "windows": ["main"],
+  "permissions": ["core:default", "allow-library-command"]
+}

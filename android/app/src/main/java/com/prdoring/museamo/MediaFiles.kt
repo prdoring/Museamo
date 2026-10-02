@@ -30,12 +30,14 @@ class MediaFiles(private val context: Context, private val repo: Repository) {
         return digest.digest().joinToString("") { "%02x".format(it) } == row.checksum
     }
     fun cleanup() {
+        PurgeStorage.finish(repo)
         val keep = repo.references()
         repo.dao.media().filter { it.id !in keep }.forEach { row ->
             file(row.id).delete(); thumbnail(row.id).delete(); repo.dao.deleteMedia(row.id)
         }
         val registered = repo.dao.media().flatMap { listOf(it.id, "${it.id}.jpg") }.toSet()
         directory.listFiles()?.filter { it.name !in registered }?.forEach { it.delete() }
+        File(context.filesDir, "sync-media").listFiles()?.filter { it.isFile && it.name.endsWith(".part") && it.name.removeSuffix(".part") !in keep }?.forEach { it.delete() }
     }
     fun import(uris: List<Uri>, remaining: Int): List<MediaRow> {
         require(remaining in 1..10 && uris.size <= remaining) { "Choose up to $remaining more attachments." }
@@ -66,9 +68,16 @@ class MediaFiles(private val context: Context, private val repo: Repository) {
                 val id = uid(); val target = file(id)
                 try {
                     val result = requireNotNull(context.contentResolver.openInputStream(uri)) { "Cannot read this file. Select it again." }.use { input ->
-                        target.outputStream().use { output -> copyChecked(input, output, limit) }
+                        java.io.FileOutputStream(target).use { output -> copyChecked(input, output, limit).also { output.fd.sync() } }
                     }
-                    val row = inspect(id, kind, mime, name, result.first, result.second)
+                    val row = try { inspect(id, kind, mime, name, result.first, result.second) }
+                        catch (error: Exception) {
+                            // Modern image/video codecs vary by Android version and device. Keep
+                            // their originals; a broken baseline JPEG/PNG/GIF/WebP still rejects
+                            // the whole picker import before any saved thought is published.
+                            if (kind == "image" && mime !in setOf("image/heic", "image/heif", "image/avif")) throw error
+                            MediaRow(id, kind, mime, name, result.first, 1, 1, null, result.second)
+                        }
                     repo.dao.insertMedia(row); repo.mediaPins.add(id); imported.add(row)
                 } catch (e: Exception) { target.delete(); thumbnail(id).delete(); throw e }
             }

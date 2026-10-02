@@ -1,0 +1,153 @@
+{
+  "envelopes": [
+    {
+      "header": {
+        "group": "22222222-2222-4222-8222-222222222222",
+        "kind": "tag",
+        "previousHash": "",
+        "protocol": 1,
+        "revision": {
+          "clock": {
+            "logical": 0,
+            "wall": 1790898410233
+          },
+          "context": {},
+          "deleted": false,
+          "dot": {
+            "origin": "11111111-1111-4111-8111-111111111111",
+            "sequence": 1
+          },
+          "entityId": "33333333-3333-4333-8333-333333333333",
+          "payloadHash": "7eae8f009fcb831312c2aba6cb8a881fee2a2ba489f686736b4622f913add41b"
+        }
+      },
+      "payload": {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "name": "Golden checklist",
+        "type": "checklist"
+      },
+      "signature": "30440220522955edf356b0f0c8e07aa37219967089bede1bd1c1bf22f52a4e428ebbb54802207fe56371e3e9096a0c93f75653a35a9a4599e7271545f648273f6e5b285576a3"
+    },
+    {
+      "header": {
+        "group": "22222222-2222-4222-8222-222222222222",
+        "kind": "thought",
+        "previousHash": "1d13b915915a78cd8923294fae10e5a3aa35f288e417e45911c44666c43ce97f",
+        "protocol": 1,
+        "revision": {
+          "clock": {
+            "logical": 0,
+            "wall": 1790898410237
+          },
+          "context": {
+            "11111111-1111-4111-8111-111111111111": 1
+          },
+          "deleted": false,
+          "dot": {
+            "origin": "11111111-1111-4111-8111-111111111111",
+            "sequence": 2
+          },
+          "entityId": "55555555-5555-4555-8555-555555555555",
+          "payloadHash": "9b7003bf19f0999998cd4f79ec3d345309ebe1770d06129d5b57731ec4fc1b9f"
+        }
+      },
+      "payload": {
+        "attachments": [
+          {
+            "byteSize": 18,
+            "checksum": "c923045a95120a84565d06a15749e4fcb867c95938acf8cb6bf473c7cb093ccb",
+            "duration": null,
+            "filename": "original.heic",
+            "height": 1,
+            "id": "44444444-4444-4444-8444-444444444444",
+            "kind": "image",
+            "mimeType": "image/heic",
+            "width": 1
+          }
+        ],
+        "completed": false,
+        "createdAt": 1790898410236,
+        "id": "55555555-5555-4555-8555-555555555555",
+        "location": null,
+        "profileId": null,
+        "starred": false,
+        "tagIds": [
+          "33333333-3333-4333-8333-333333333333"
+        ],
+        "text": "Portable Windows writing",
+        "updatedAt": 1790898410236
+      },
+      "signature": "3044022043e6c3829456b0a54daa7ef348c353c7352ac7766f578a012360ca295b9817f80220199b50d0eea7f7795a7388eef5cc01b22d1b41bb75cc1731aafac4d6db4f6617"
+    },
+    {
+      "header": {
+        "group": "22222222-2222-4222-8222-222222222222",
+        "kind": "archiveThought",
+        "previousHash": "bf00049a59da4bf0e39acf071757db86cfd703083609094c29f44edea358878a",
+        "protocol": 1,
+        "revision": {
+          "clock": {
+            "logical": 0,
+            "wall": 1790898410239
+          },
+          "context": {
+            "11111111-1111-4111-8111-111111111111": 2
+          },
+          "deleted": false,
+          "dot": {
+            "origin": "11111111-1111-4111-8111-111111111111",
+            "sequence": 3
+          },
+          "entityId": "66666666-6666-4666-8666-666666666666",
+          "payloadHash": "2cf8e75eb9821ed4a0733c2c147e2ff15a5492dd4190436ea79ca02069af3db9"
+        }
+      },
+      "payload": {
+        "createdAt": 1000,
+        "entityId": "66666666-6666-4666-8666-666666666666",
+        "kind": "thought",
+        "payload": {
+          "attachments": [
+            {
+              "byteSize": 18,
+              "checksum": "c923045a95120a84565d06a15749e4fcb867c95938acf8cb6bf473c7cb093ccb",
+              "duration": null,
+              "filename": "original.heic",
+              "height": 1,
+              "id": "44444444-4444-4444-8444-444444444444",
+              "kind": "image",
+              "mimeType": "image/heic",
+              "width": 1
+            }
+          ],
+          "completed": false,
+          "createdAt": 1790898410239,
+          "id": "66666666-6666-4666-8666-666666666666",
+          "location": null,
+          "profileId": null,
+          "starred": false,
+          "tagIds": [
+            "33333333-3333-4333-8333-333333333333"
+          ],
+          "text": "Portable historical writing",
+          "updatedAt": 1790898410239
+        }
+      },
+      "signature": "3046022100b6ae995547fd9c940b9a4192014bf1b4df3bc62c3e9bcdf920d04a106d8c7963022100895f5d828446ebafcda90b637ae785201cd74482be5a750cfdcb4f66a5a917de"
+    }
+  ],
+  "groupId": "22222222-2222-4222-8222-222222222222",
+  "identity": {
+    "deviceId": "11111111-1111-4111-8111-111111111111",
+    "name": "Synthetic Windows fixture",
+    "noisePublic": "0404040404040404040404040404040404040404040404040404040404040404",
+    "signingPublic": "041e18532fd4754c02f3041d9c75ceb33b83ffd81ac7ce4fe882ccb1c98bc5896ea46c311c4e2ff40dd96a3653e6e45445d32dfe486eced75c7a90c6a18881c0a3"
+  },
+  "originals": [
+    {
+      "bytes": "73796e7468657469632d6f726967696e616c",
+      "id": "44444444-4444-4444-8444-444444444444"
+    }
+  ],
+  "purgeProofs": []
+}

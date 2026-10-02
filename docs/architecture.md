@@ -1,5 +1,7 @@
 # Architecture decisions
 
+The Windows companion and shared Rust layer extend this Android architecture. See [offline sync](offline-sync.md) for native boundaries, causal conflicts, Recovery, and removed-device authorization, and [companion verification](offline-sync-verification.md) for completed checks. Local tag creation validates unique normalized names; concurrent sync renames retain separate IDs with disambiguated names.
+
 ## One native source of truth
 
 React 19 + TypeScript + Vite + Tailwind inside Capacitor 8 implement review. Kotlin owns Room/SQLite, the capture activity, widget configuration, tag picker, drafts, and Storage Access Framework backup. Native capture never starts a WebView. The bridge exposes typed queries/mutations, library/profile operations, native compose/configuration launch, backup pickers, and `dataChanged`. All mutations serialize on one repository executor and use Room transactions where multiple records change. Refresh on WebView resume reconciles notifications missed while the app was closed.

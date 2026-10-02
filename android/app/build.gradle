@@ -9,8 +9,8 @@ android {
         applicationId "com.prdoring.museamo"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 4
-        versionName "0.3.0"
+        versionCode 5
+        versionName "0.4.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -43,6 +43,7 @@ dependencies {
     implementation 'org.jsoup:jsoup:1.21.2'
     implementation 'io.noties.markwon:core:4.6.2'
     implementation 'androidx.room:room-runtime:2.7.2'
+    implementation 'androidx.work:work-runtime:2.11.2'
     kapt 'androidx.room:room-compiler:2.7.2'
     androidTestImplementation 'androidx.room:room-testing:2.7.2'
     androidTestImplementation 'androidx.test:runner:1.7.0'
@@ -59,3 +60,13 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+// Every distributable APK includes the same portable core used by the desktop companion.
+tasks.register('buildSyncCore', Exec) {
+    workingDir rootProject.projectDir.parentFile
+    environment 'ANDROID_HOME', System.getenv('ANDROID_HOME') ?: android.sdkDirectory.absolutePath
+    def nativeBuild = ['node', 'scripts/build-sync-android.mjs']
+    if (project.hasProperty('syncCoreRelease') || gradle.startParameter.taskNames.any { it.toLowerCase(java.util.Locale.ROOT).contains('release') }) nativeBuild += '--release'
+    commandLine nativeBuild
+}
+tasks.named('preBuild').configure { dependsOn tasks.named('buildSyncCore') }

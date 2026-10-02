@@ -1,0 +1,124 @@
+{
+  "envelopes": [
+    {
+      "header": {
+        "protocol": 1,
+        "group": "935eb59c-4a9c-4f15-a852-01c3a90c3315",
+        "kind": "tag",
+        "previousHash": "",
+        "revision": {
+          "entityId": "45049cc3-fb10-430e-9934-c18b0fa2c4e9",
+          "dot": {
+            "origin": "b2b5b256-4fcb-4cbf-ac50-e47fb1931385",
+            "sequence": 1
+          },
+          "context": {
+            "b2b5b256-4fcb-4cbf-ac50-e47fb1931385": 0
+          },
+          "clock": {
+            "wall": 1790896928996,
+            "logical": 0
+          },
+          "deleted": false,
+          "payloadHash": "c76109b04e5b5cb393c7327b40692fcba1401e0c3b69ab08c3d8a1de2465336d"
+        }
+      },
+      "signature": "3046022100c3bea230df7ec816c46371e40c8a85e9f7363e58c01a809abae019b8ed51ace4022100d661725cd24d68ad3eeca3820a9b1154550a6463dccba679751ec9fbdf9af1c0",
+      "payload": {
+        "id": "45049cc3-fb10-430e-9934-c18b0fa2c4e9",
+        "name": "Android Café 😀",
+        "type": "checklist"
+      }
+    },
+    {
+      "header": {
+        "protocol": 1,
+        "group": "935eb59c-4a9c-4f15-a852-01c3a90c3315",
+        "kind": "thought",
+        "previousHash": "fd4e5200119eb74c287c696dcf5a142a8c1e89f81ebe4c6223d8b58918f34d89",
+        "revision": {
+          "entityId": "b8dc2c02-acfc-4517-ba71-9adf0468f992",
+          "dot": {
+            "origin": "b2b5b256-4fcb-4cbf-ac50-e47fb1931385",
+            "sequence": 2
+          },
+          "context": {
+            "b2b5b256-4fcb-4cbf-ac50-e47fb1931385": 1
+          },
+          "clock": {
+            "wall": 1790896929003,
+            "logical": 0
+          },
+          "deleted": false,
+          "payloadHash": "4a9e46b44f04028263785399539060f9b5cc053a44227779d70cc90474c5d50a"
+        }
+      },
+      "signature": "304402203e6ffb647356be7774f821836bd87e316eb7fcf853082b631fc326a2d4a1337502206a6b00e12a49534ac37e71c9a8ef8bd660ce6f0cd459f537c821beac8086e955",
+      "payload": {
+        "id": "b8dc2c02-acfc-4517-ba71-9adf0468f992",
+        "text": "Signed Android thought\nline two",
+        "createdAt": 1790896929000,
+        "updatedAt": 1790896929000,
+        "starred": false,
+        "completed": false,
+        "tagIds": [
+          "45049cc3-fb10-430e-9934-c18b0fa2c4e9"
+        ],
+        "profileId": null,
+        "attachmentIds": [],
+        "location": null,
+        "attachments": []
+      }
+    },
+    {
+      "header": {
+        "protocol": 1,
+        "group": "935eb59c-4a9c-4f15-a852-01c3a90c3315",
+        "kind": "thought",
+        "previousHash": "99dd1650fe32626f80f085b99db007e5163d1d77e07f15997927ffc5f78c3146",
+        "revision": {
+          "entityId": "b8dc2c02-acfc-4517-ba71-9adf0468f992",
+          "dot": {
+            "origin": "b2b5b256-4fcb-4cbf-ac50-e47fb1931385",
+            "sequence": 3
+          },
+          "context": {
+            "b2b5b256-4fcb-4cbf-ac50-e47fb1931385": 2
+          },
+          "clock": {
+            "wall": 1790896929014,
+            "logical": 0
+          },
+          "deleted": false,
+          "payloadHash": "677c3980ac689eb2bcd2b06b160f62363926df470f271a6239844d5f6cc453ba"
+        }
+      },
+      "signature": "304402200e8050b0a09a81d500a378456886443be2906790e01b287d3fbc779955d62ac102200a2538dabc1f419eb3c9b26d521d9f5e2ecf6a68a1d818fdba6b918fc267eb0a",
+      "payload": {
+        "id": "b8dc2c02-acfc-4517-ba71-9adf0468f992",
+        "text": "Signed Android thought\nline two",
+        "createdAt": 1790896929000,
+        "updatedAt": 1790896929000,
+        "starred": false,
+        "completed": true,
+        "tagIds": [
+          "45049cc3-fb10-430e-9934-c18b0fa2c4e9"
+        ],
+        "profileId": null,
+        "attachmentIds": [],
+        "location": null,
+        "attachments": []
+      }
+    }
+  ],
+  "more": false,
+  "purgeProofs": [],
+  "identity": {
+    "deviceId": "b2b5b256-4fcb-4cbf-ac50-e47fb1931385",
+    "name": "sdk_gphone64_x86_64",
+    "noisePublic": "e63744da1fdd64584282d2ef857c16cffd765d13d30aab54545d5da61f087a1d",
+    "signingPublic": "04fb93ca940c16d79849543db760866098dde7872442327797ee4966deaad8eefc3d5e59fb2b812464b43a2fa4f62c0082512a17d5858dde9796003fec0d89cb8a"
+  },
+  "groupId": "935eb59c-4a9c-4f15-a852-01c3a90c3315",
+  "originals": []
+}

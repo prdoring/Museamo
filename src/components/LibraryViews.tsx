@@ -6,6 +6,7 @@ import {
   Search,
 } from "lucide-react";
 import type { Tag } from "../data";
+import { tagDisplayName } from "../data";
 export function TagList({
   tags,
   query,
@@ -30,7 +31,7 @@ export function TagList({
         <div className="tag-row" key={t.id}>
           <button onClick={() => open(t.id)}>
             {t.type === "checklist" ? <ListChecks size={19} aria-hidden="true" /> : <Hash size={19} aria-hidden="true" />}
-            <span>{t.name}{t.type === "checklist" && <small className="category-type">Checklist</small>}</span>
+            <span>{tagDisplayName(t, tags)}{t.type === "checklist" && <small className="category-type">Checklist</small>}</span>
             <small>{t.count || 0}</small>
             <PaperIcon name="next" size={18} />
           </button>

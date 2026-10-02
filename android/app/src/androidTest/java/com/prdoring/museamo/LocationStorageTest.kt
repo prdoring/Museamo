@@ -82,9 +82,9 @@ class LocationStorageTest {
             fresh.edit(entry.id, "Edited memory", emptyList())
             assertEquals(international, fresh.dao.entry(entry.id)!!.location)
             val saved = fresh.dao.entry(entry.id)!!
-            fresh.delete(saved.id); fresh.restore(saved)
-            assertEquals(saved, fresh.dao.entry(saved.id))
-            assertEquals(listOf(saved), fresh.dao.page("Museumstraat", false, "", 50, null, ""))
+            fresh.delete(saved.id); val restored = fresh.restore(saved)
+            assertEquals(saved.copy(id = restored.id), fresh.dao.entry(restored.id))
+            assertEquals(listOf(restored), fresh.dao.page("Museumstraat", false, "", 50, null, ""))
         } finally { freshDb.close() }
     }
     @Test fun draftUndoAndLateNamingRespectRemovalAndManualEdits() {
@@ -96,13 +96,58 @@ class LocationStorageTest {
         repo.edit(entry.id, "Edited", emptyList())
         assertEquals(enriched, repo.dao.entry(entry.id)!!.location)
         val saved = repo.dao.entry(entry.id)!!
-        repo.delete(entry.id); assertFalse(repo.enrichLocation(entry.id, enriched, raw)); repo.restore(saved)
-        assertEquals(enriched, repo.dao.entry(entry.id)!!.location)
+        repo.delete(entry.id); assertFalse(repo.enrichLocation(entry.id, enriched, raw)); val restored = repo.restore(saved)
+        assertEquals(enriched, repo.dao.entry(restored.id)!!.location)
         val manual = JSONObject(enriched).put("userLabel", "My place").toString()
-        repo.edit(entry.id, "Edited", emptyList(), location = manual, updateLocation = true)
-        assertFalse(repo.enrichLocation(entry.id, enriched, raw))
-        repo.edit(entry.id, "Edited", emptyList(), location = null, updateLocation = true)
-        assertFalse(repo.enrichLocation(entry.id, enriched, raw)); assertNull(repo.dao.entry(entry.id)!!.location)
+        repo.edit(restored.id, "Edited", emptyList(), location = manual, updateLocation = true)
+        assertFalse(repo.enrichLocation(restored.id, enriched, raw))
+        repo.edit(restored.id, "Edited", emptyList(), location = null, updateLocation = true)
+        assertFalse(repo.enrichLocation(restored.id, enriched, raw)); assertNull(repo.dao.entry(restored.id)!!.location)
+    }
+    @Test fun blankCaptureOpeningClearsOldLocationAndRetriesWithoutChangingGenericDraftAccess() {
+        val tag = repo.saveTag(null, "Location opening")
+        val profile = ProfileRow(uid(), "Location opening", "fixed", jsonIds(listOf(tag.id))).also { repo.saveProfile(it) }
+        val raw = JSONObject(location()).put("capturedAt", 1790274033367L).put("locality", "Denver").toString()
+        val old = repo.draft(profile.id, profile, null).copy(text = "  \n", location = raw, locationAttempted = true)
+        repo.saveDraft(old)
+        assertEquals("Ordinary draft reads must preserve stored metadata", old, repo.draft(profile.id, profile, null))
+        val opening = repo.prepareCaptureDraft(profile.id, profile, null, resuming = false)
+        assertTrue("A blank new compose must try the current fix", opening.captureLocation)
+        assertEquals(old.copy(location = null, locationAttempted = false), opening.draft)
+        assertEquals(opening.draft, repo.dao.draft(profile.id))
+        val fresh = repo.prepareCaptureDraft("new", null, tag.id, resuming = false)
+        assertTrue(fresh.captureLocation)
+        assertEquals(jsonIds(listOf(tag.id)), fresh.draft.tagIds)
+        assertNull(fresh.draft.location)
+    }
+    @Test fun unfinishedTextAndAttachmentDraftsKeepTheirOriginalLocationAndSkipChoice() {
+        val media = MediaRow(uid(), "image", "image/heic", "original.heic", 3, 0, 0, null, "0".repeat(64)).also { repo.dao.insertMedia(it) }
+        val raw = JSONObject(location()).put("userLabel", "Chosen place").toString()
+        val drafts = listOf(
+            repo.draft("text", null, null).copy(text = "Still writing", location = raw, locationAttempted = true),
+            repo.draft("attachment", null, null).copy(mediaIds = jsonIds(listOf(media.id)), location = raw, locationAttempted = true),
+            repo.draft("skipped", null, null).copy(text = "No location for this post", locationAttempted = true),
+            repo.draft("not-attempted", null, null).copy(text = "Imported unfinished draft")
+        )
+        drafts.forEach { saved ->
+            repo.saveDraft(saved)
+            val opening = repo.prepareCaptureDraft(saved.profileKey, null, null, resuming = false)
+            assertEquals(saved, opening.draft)
+            assertFalse("Opening real unfinished content must preserve location intent", opening.captureLocation)
+        }
+    }
+    @Test fun resumingBlankCompositionPreservesCapturedLocationAndExplicitRemoval() {
+        val raw = JSONObject(location()).put("userLabel", "Current composition place").toString()
+        val captured = repo.draft("resume", null, null).copy(location = raw, locationAttempted = true)
+        repo.saveDraft(captured)
+        val resumed = repo.prepareCaptureDraft("resume", null, null, resuming = true)
+        assertEquals(captured, resumed.draft)
+        assertFalse(resumed.captureLocation)
+        val removed = captured.copy(location = null)
+        repo.saveDraft(removed)
+        val skipped = repo.prepareCaptureDraft("resume", null, null, resuming = true)
+        assertEquals(removed, skipped.draft)
+        assertFalse(skipped.captureLocation)
     }
     @Test fun archiveV3RoundTripAndLegacyImports() {
         val entry = repo.commitDraft(repo.draft("app", null, null).copy(text = "A place", location = location()))

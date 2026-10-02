@@ -39,6 +39,17 @@ class MediaStorageTest {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         return MediaRow(id, "image", "image/png", "photo.png", bytes.size.toLong(), 1, 1, null, digest).also { repo.dao.insertMedia(it) }
     }
+    @Test fun pickerRejectsCorruptBaselineImageAtomicallyAndRetainsUnavailableModernOriginal() {
+        val valid = File(context.cacheDir, "valid-picker.png").apply { writeBytes(android.util.Base64.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1sAAAAASUVORK5CYII=", android.util.Base64.DEFAULT)) }
+        val corrupt = File(context.cacheDir, "corrupt-picker.png").apply { writeText("not a PNG") }
+        fun uri(file: File) = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        assertTrue(runCatching { files.import(listOf(uri(valid), uri(corrupt)), 10) }.isFailure)
+        assertTrue(repo.dao.media().isEmpty()); assertTrue(repo.mediaPins.isEmpty()); assertTrue(files.directory.listFiles().isNullOrEmpty())
+        val original = "Synthetic original with unavailable HEIC decoding".toByteArray()
+        val modern = File(context.cacheDir, "unavailable-picker.heic").apply { writeBytes(original) }
+        val row = files.import(listOf(uri(modern)), 10).single(); modern.delete()
+        assertEquals("image/heic", row.mimeType); assertArrayEquals(original, files.file(row.id).readBytes()); assertTrue(files.intact(row))
+    }
     @Test fun migrationPreservesExistingEntriesAndDrafts() {
         val name = "media-migration-${uid()}"
         migration.createDatabase(name, 1).use {
@@ -58,10 +69,13 @@ class MediaStorageTest {
         val entry = repo.commitDraft(draft)
         assertEquals(entry, repo.commitDraft(draft)); assertNull(repo.dao.draft("widget"))
         repo.delete(entry.id); files.cleanup(); assertTrue(files.file(image.id).exists())
-        repo.restore(entry); repo.deletedPins.remove(entry.id); files.cleanup()
-        assertEquals(entry, repo.dao.entry(entry.id)); assertTrue(files.file(image.id).exists())
-        repo.delete(entry.id); repo.deletedPins.remove(entry.id); files.cleanup()
-        assertNull(repo.dao.media(image.id)); assertFalse(files.file(image.id).exists())
+        val restored = repo.restore(entry); repo.deletedPins.remove(entry.id); files.cleanup()
+        assertEquals(entry.copy(id = restored.id), repo.dao.entry(restored.id)); assertTrue(files.file(image.id).exists())
+        repo.delete(restored.id); repo.deletedPins.remove(restored.id); files.cleanup()
+        assertNotNull(repo.dao.media(image.id)); assertTrue(files.file(image.id).exists())
+        val platform = SyncPlatform(context, repo)
+        repo.rawDao.recovery().map { it.id }.forEach { id -> if (repo.rawDao.recoveryItem(id) != null) platform.clearRecovery(repo, id) }
+        files.cleanup(); assertNull(repo.dao.media(image.id)); assertFalse(files.file(image.id).exists())
     }
     @Test fun cancellationAndFailedEditPreserveSavedMedia() {
         val original = media(); val entry = repo.commitDraft(repo.draft("app", null, null).copy(mediaIds = jsonIds(listOf(original.id))))

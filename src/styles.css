@@ -1,4 +1,16 @@
 @import "tailwindcss";
+@media (min-width: 900px) {
+  .app-shell.desktop-shell { max-width: 1100px; margin: auto; padding-left: 190px; }
+  .desktop-shell .bottom-dock { left: max(0px, calc((100vw - 1100px) / 2)); transform: none; top: 0; bottom: 0; width: 180px; display: flex; flex-direction: column-reverse; justify-content: flex-end; padding: 80px 14px 24px; border-right: 1px solid var(--line); border-top: 0; }
+  .desktop-shell .bottom-dock nav { display: flex; flex-direction: column; gap: 10px; }
+  .desktop-shell .bottom-dock nav button { display: flex; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 14px; }
+  .desktop-shell .capture-bar { margin-top: 24px; white-space: normal; padding: 10px; font-size: 13px; }
+  .desktop-shell .capture-bar > span:first-of-type { white-space: normal; }
+  .desktop-shell .capture-bar .send-symbol { display: none; }
+  .desktop-shell .toolbar { max-width: none; }
+  .desktop-shell main { padding-bottom: 40px; }
+  [data-platform="desktop"] .sheet { width: min(720px, calc(100vw - 48px)); max-width: 720px; }
+}
 @font-face {
   font-family: "DM Sans";
   src: url("/fonts/dm-sans.ttf") format("truetype");
@@ -901,3 +913,21 @@ summary {
 .location-spinner { animation: location-spin 1s linear infinite; }
 @keyframes location-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .location-spinner { animation: none; } }
+
+.device-list { display: grid; gap: 8px; margin: 16px 0; }
+.device-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.device-row > div { min-width: 0; overflow-wrap: anywhere; }
+.device-row small { display: block; margin-top: 4px; }
+.sync-confirm { padding: 16px; margin: 16px 0; border: 1px solid var(--line); border-radius: 8px; }
+.sync-confirm h3, .nearby-devices h3 { margin-top: 0; }
+.pairing-code { display: block; font: 600 20px/1.8 monospace; letter-spacing: 1px; overflow-wrap: anywhere; margin: 16px 0; }
+.manual-link { margin: 20px 0; }
+.manual-link summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+.manual-link label { display: grid; gap: 8px; margin: 12px 0; }
+.manual-link input { width: 100%; }
+.nearby-devices .menu-row { justify-content: space-between; }
+.recovery-item { border-bottom: 1px solid var(--line); padding: 16px 0; }
+.recovery-item .rich-text { margin: 12px 0; max-height: 260px; overflow: auto; }
+.recovery-item .action-row, .sync-confirm .action-row { flex-wrap: wrap; }
+.startup-setting { display: flex; align-items: center; gap: 10px; }
+.local-addresses code { display: block; overflow-wrap: anywhere; margin: 6px 0; }

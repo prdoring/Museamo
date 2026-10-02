@@ -19,3 +19,6 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-keep class com.prdoring.museamo.SyncCore { *; }
+-keepclassmembers class com.prdoring.museamo.SyncPlatform { public java.lang.String platformCall(java.lang.String, java.lang.String); }

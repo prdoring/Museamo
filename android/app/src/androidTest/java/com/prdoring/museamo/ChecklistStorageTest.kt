@@ -88,10 +88,10 @@ class ChecklistStorageTest {
         repo.saveTag(second.id, second.name, "checklist")
         repo.edit(entry.id, "Edited", listOf(second.id))
         val saved = repo.dao.entry(entry.id)!!
-        repo.delete(entry.id); repo.restore(saved)
-        assertEquals(saved, repo.dao.entry(entry.id))
-        repo.setCompleted(entry.id, false)
-        assertFalse(repo.dao.entry(entry.id)!!.completed)
+        repo.delete(entry.id); val restored = repo.restore(saved)
+        assertNotEquals(saved.id, restored.id); assertEquals(saved.copy(id = restored.id), repo.dao.entry(restored.id))
+        repo.setCompleted(restored.id, false)
+        assertFalse(repo.dao.entry(restored.id)!!.completed)
         rejected { repo.saveTag(second.id, second.name, "invalid") }
     }
     @Test fun bothGroupsPageAcrossEqualTimesAndRefreshAfterBoundaryToggle() {
@@ -151,11 +151,11 @@ class ChecklistStorageTest {
         assertTrue(repo.dao.page("", false, "", 50, null, "", checklistOnly = true).isEmpty())
         assertEquals(137, repo.dao.page("", false, "", 200, null, "").size)
     }
-    @Test fun zipV4RoundTripsAndLegacyImportsDefaultWithoutChangingLocalTypes() {
+    @Test fun zipV5RoundTripsAndLegacyImportsDefaultWithoutChangingLocalTypes() {
         val tag = repo.saveTag(null, "Tasks", "checklist")
         val entry = post(tag); repo.setCompleted(entry.id, true)
         val output = ByteArrayOutputStream().also { MediaBackup.export(context, repo, it) }.toByteArray()
-        ZipInputStream(ByteArrayInputStream(output)).use { zip -> zip.nextEntry; assertEquals(4, JSONObject(zip.readBytes().toString(Charsets.UTF_8)).getInt("version")) }
+        ZipInputStream(ByteArrayInputStream(output)).use { zip -> zip.nextEntry; assertEquals(5, JSONObject(zip.readBytes().toString(Charsets.UTF_8)).getInt("version")) }
         val freshDb = Room.inMemoryDatabaseBuilder(context, MuseamoDatabase::class.java).build()
         try {
             val fresh = Repository(freshDb)

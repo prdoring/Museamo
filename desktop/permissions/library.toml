@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-library-command"
+description = "Typed, validated local-library operations. No arbitrary paths, SQL, sockets, or signing."
+commands.allow = ["library_command"]

@@ -43,7 +43,7 @@ function EmbeddedVideo({ url, failed }: { url: string; failed: () => void }) {
 }
 function MediaItem({ attachment, link, open }: { attachment?: Attachment; link?: MediaLink; open?: (url: string) => void }) {
   const { ref, visible } = useVisible();
-  const [resolved, setResolved] = useState<{ url: string; thumbnailUrl?: string }>();
+  const [resolved, setResolved] = useState<{ url: string; thumbnailUrl?: string; availability?: "available" | "pending" | "unsupported" }>();
   const [error, setError] = useState(false);
   const kind = attachment?.kind || link!.kind;
   useEffect(() => {
@@ -51,6 +51,11 @@ function MediaItem({ attachment, link, open }: { attachment?: Attachment; link?:
     let alive = true;
     void bridge.resolveMedia({ id: attachment.id }).then(r => { if (alive) setResolved(r); }).catch(() => { if (alive) setError(true); });
     return () => { alive = false; };
+  }, [visible, attachment, resolved]);
+  useEffect(() => {
+    if (!visible || !attachment || resolved?.availability !== "pending") return;
+    const timer = window.setTimeout(() => setResolved(undefined), 5000);
+    return () => clearTimeout(timer);
   }, [visible, attachment, resolved]);
   const url = resolved?.url || link?.url;
   const picture = <img src={resolved?.thumbnailUrl || url} alt={attachment?.filename || "Linked photo"} onError={() => setError(true)} />;
@@ -61,8 +66,10 @@ function MediaItem({ attachment, link, open }: { attachment?: Attachment; link?:
       : kind === "video" ? <Video url={url} poster={resolved?.thumbnailUrl} failed={() => setError(true)} /> :
         <EmbeddedVideo url={url} failed={() => setError(true)} />)}
     {!visible && <span className="muted">{kind === "image" ? "Photo" : "Video"}</span>}
+    {visible && resolved?.availability === "pending" && <p className="media-error" role="status">Original waiting to sync. Connect a linked device with this attachment.</p>}
+    {visible && resolved?.availability === "unsupported" && <p className="media-error" role="status">The original is saved, but this device cannot preview its format.</p>}
     </div>
-    {error && <p className="media-error" role="status">Media unavailable. Check your connection or try a supported file format. <button onClick={() => { setError(false); setResolved(undefined); }}>Retry</button></p>}
+    {error && <p className="media-error" role="status">{attachment ? "Could not preview this original. It stays in your library and backups." : "Media unavailable. Check your connection or try a supported file format."} <button onClick={() => { setError(false); setResolved(undefined); }}>Retry</button></p>}
     {link && <button className="text-button" onClick={() => void bridge.openExternal({ url: link.source }).catch(() => setError(true))}>Open original link</button>}
   </div>;
 }

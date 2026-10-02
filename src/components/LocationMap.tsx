@@ -27,6 +27,7 @@ export function LocationMap({ query = "", tags = [], focus, edit, complete, pend
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const changingCompletion = useRef(new Set<string>());
+  const pendingRefresh = useRef(false);
   const [retryCompletion, setRetryCompletion] = useState<Entry>();
   const [starred, setStarred] = useState(false), [tagId, setTagId] = useState("");
   const [loading, setLoading] = useState(false), [error, setError] = useState("");
@@ -55,8 +56,13 @@ export function LocationMap({ query = "", tags = [], focus, edit, complete, pend
   useEffect(() => { setSelected([]); }, [query, starred, tagId]);
   useEffect(() => {
     let disposed = false;
-    const listener = bridge.addListener("dataChanged", () => { if (!disposed && !changingCompletion.current.size) setRevision(v => v + 1); });
-    return () => { disposed = true; void listener.then(h => h.remove()); };
+    const listener = bridge.addListener("dataChanged", () => {
+      if (disposed) return;
+      if (changingCompletion.current.size) pendingRefresh.current = true;
+      else setRevision(v => v + 1);
+    });
+    void listener.catch(e => { if (!disposed) setError(String(e)); });
+    return () => { disposed = true; void listener.then(h => h.remove()).catch(() => {}); };
   }, []);
   useEffect(() => {
     if (!container.current) return;
@@ -103,7 +109,13 @@ export function LocationMap({ query = "", tags = [], focus, edit, complete, pend
     catch (e) {
       setEntries(old => old.map(item => item.id === entry.id ? { ...item, completed: entry.completed } : item));
       setError(e instanceof Error ? e.message : String(e)); setRetryCompletion(entry);
-    } finally { changingCompletion.current.delete(entry.id); }
+    } finally {
+      changingCompletion.current.delete(entry.id);
+      if (!changingCompletion.current.size && pendingRefresh.current) {
+        pendingRefresh.current = false;
+        setRevision(v => v + 1);
+      }
+    }
   }
   const selectedEntries = entries.filter(e => selected.includes(e.id));
   return <section className="location-view" aria-label="Post map">

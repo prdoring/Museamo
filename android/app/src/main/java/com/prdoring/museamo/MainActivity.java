@@ -17,7 +17,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MuseamoPlugin.class);
         super.onCreate(state);
         locationPermission = new LocationPermission(this, granted -> {});
-        getBridge().getWebView().getSettings().setUserAgentString(getBridge().getWebView().getSettings().getUserAgentString() + " Museamo/0.3");
+        getBridge().getWebView().getSettings().setUserAgentString(getBridge().getWebView().getSettings().getUserAgentString() + " Museamo/0.4");
         getBridge().setWebViewClient(new MediaWebViewClient(getBridge()));
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() {

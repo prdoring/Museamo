@@ -13,12 +13,13 @@ fun jsonIds(values: List<String>): String = JSONArray(values.distinct()).toStrin
 
 @Entity(tableName = "entries", indices = [Index(value = ["createdAt", "id"])])
 data class EntryRow(@PrimaryKey val id: String, val text: String, val createdAt: Long, val updatedAt: Long, val starred: Boolean = false, val tagIds: String = "[]", val profileId: String? = null, @ColumnInfo(defaultValue = "'[]'") val mediaIds: String = "[]", val location: String? = null, @ColumnInfo(defaultValue = "''") val locationSearch: String = PostLocation.search(location), @ColumnInfo(defaultValue = "0") val completed: Boolean = false)
-@Entity(tableName = "tags", indices = [Index(value = ["normalizedName"], unique = true)])
-data class TagRow(@PrimaryKey val id: String, val name: String, val normalizedName: String = name.lowercase(java.util.Locale.ROOT), @ColumnInfo(defaultValue = "'standard'") val type: String = "standard")
+@Entity(tableName = "tags", indices = [Index(value = ["normalizedName"])])
+data class TagRow(@PrimaryKey val id: String, val name: String, val normalizedName: String = normalizeTag(name), @ColumnInfo(defaultValue = "'standard'") val type: String = "standard")
 @Entity(tableName = "profiles")
 data class ProfileRow(@PrimaryKey val id: String, val label: String, val mode: String, val tagIds: String = "[]", val selectedTagId: String? = null)
 @Entity(tableName = "drafts")
 data class DraftRow(@PrimaryKey val profileKey: String, val entryId: String, val text: String, val tagIds: String, val profileId: String?, @ColumnInfo(defaultValue = "'[]'") val mediaIds: String = "[]", val location: String? = null, @ColumnInfo(defaultValue = "0") val locationAttempted: Boolean = false)
+data class CaptureDraftOpening(val draft: DraftRow, val captureLocation: Boolean)
 @Entity(tableName = "bindings")
 data class BindingRow(@PrimaryKey val widgetId: Int, val profileId: String)
 
@@ -27,6 +28,25 @@ data class MediaRow(@PrimaryKey val id: String, val kind: String, val mimeType: 
 
 @Dao
 interface StoreDao {
+    @Query("SELECT * FROM sync_metadata WHERE `key` = :key") fun syncMetadata(key: String): SyncMetadataRow?
+    @Query("SELECT * FROM sync_metadata WHERE `key` LIKE :prefix") fun syncMetadataPrefix(prefix: String): List<SyncMetadataRow>
+    @Upsert fun putSyncMetadata(row: SyncMetadataRow)
+    @Query("DELETE FROM sync_metadata WHERE `key` = :key") fun deleteSyncMetadata(key: String)
+    @Query("SELECT * FROM sync_revisions ORDER BY sequence") fun syncRevisions(): List<SyncRevisionRow>
+    @Query("SELECT id,kind,entityId,origin,sequence,header,CASE WHEN payload IS NULL THEN 0 ELSE 1 END AS hasPayload FROM sync_revisions") fun syncHeaders(): List<SyncHeaderRow>
+    @Query("SELECT * FROM sync_revisions WHERE id = :id") fun syncRevision(id: String): SyncRevisionRow?
+    @Query("SELECT * FROM sync_revisions WHERE origin = :origin AND sequence = :sequence") fun originRevision(origin: String, sequence: Long): SyncRevisionRow?
+    @Query("UPDATE sync_revisions SET header = :header WHERE id = :id") fun updateRevisionHeader(id: String, header: String)
+    @Query("SELECT * FROM sync_revisions WHERE kind = :kind AND entityId = :id ORDER BY sequence DESC") fun entityRevisions(kind: String, id: String): List<SyncRevisionRow>
+    @Insert fun insertSyncRevision(row: SyncRevisionRow)
+    @Query("UPDATE sync_revisions SET payload = NULL WHERE id = :id") fun clearRevisionPayload(id: String)
+    @Query("UPDATE sync_revisions SET payload = :payload WHERE id = :id AND payload IS NULL") fun hydrateRevisionPayload(id: String, payload: String)
+    @Query("SELECT * FROM recovery ORDER BY createdAt DESC, id") fun recovery(): List<RecoveryRow>
+    @Query("SELECT * FROM recovery WHERE id = :id") fun recoveryItem(id: String): RecoveryRow?
+    @Insert(onConflict = OnConflictStrategy.IGNORE) fun putRecovery(row: RecoveryRow)
+    @Query("DELETE FROM recovery WHERE id = :id") fun clearRecovery(id: String)
+    @Query("SELECT * FROM sync_retired WHERE kind = :kind AND id = :id") fun retired(kind: String, id: String): RetiredRow?
+    @Upsert fun putRetired(row: RetiredRow)
     @Query("SELECT * FROM media") fun media(): List<MediaRow>
     @Query("SELECT * FROM media WHERE id = :id") fun media(id: String): MediaRow?
     @Insert fun insertMedia(row: MediaRow)
@@ -60,11 +80,13 @@ interface StoreDao {
     @Query("DELETE FROM bindings WHERE widgetId = :id") fun deleteBinding(id: Int)
 }
 
-@Database(entities = [EntryRow::class, TagRow::class, ProfileRow::class, DraftRow::class, BindingRow::class, MediaRow::class], version = 4, exportSchema = true)
+@Database(entities = [EntryRow::class, TagRow::class, ProfileRow::class, DraftRow::class, BindingRow::class, MediaRow::class, SyncMetadataRow::class, SyncRevisionRow::class, RecoveryRow::class, RetiredRow::class], version = 5, exportSchema = true)
 abstract class MuseamoDatabase : RoomDatabase() { abstract fun dao(): StoreDao }
 
 class Repository(val db: MuseamoDatabase) {
-    val dao = db.dao()
+    val rawDao = db.dao()
+    val dao: StoreDao = RecordingDao(db, rawDao)
+    init { PurgeStorage.configure(this); db.runInTransaction { rawDao.tags().forEach { row -> val normalized = normalizeTag(row.name); if (normalized != row.normalizedName) rawDao.putTag(row.copy(normalizedName = normalized)) } } }
     val mediaPins = mutableSetOf<String>()
     val deletedPins = mutableMapOf<String, List<String>>()
     fun validateMedia(values: List<String>): String {
@@ -72,19 +94,24 @@ class Repository(val db: MuseamoDatabase) {
         require(values.all { dao.media(it) != null }) { "An attachment is missing. Select it again." }
         return jsonIds(values)
     }
-    fun entryJson(row: EntryRow): JSONObject = row.json().put("attachments", JSONArray(ids(row.mediaIds).map { requireNotNull(dao.media(it)).json() }))
+    fun revision(kind: String, id: String): String? = dao.syncMetadata("head:$kind:$id")?.value ?: dao.entityRevisions(kind, id).firstOrNull()?.id
+    fun requireThoughtRevision(id: String, base: String?) {
+        require(base == null || base == revision("thought", id)) { "This thought changed. Your writing is preserved; reload the current revision or save as a new thought." }
+    }
+    fun entryJson(row: EntryRow): JSONObject = row.json().put("revision", revision("thought", row.id) ?: JSONObject.NULL).put("attachments", JSONArray(ids(row.mediaIds).map { requireNotNull(dao.media(it)).json() })).also { json -> revision("thought", row.id)?.let { id -> dao.syncRevision(id)?.payload?.let { JSONObject(it).optJSONObject("provenance")?.let { provenance -> json.put("provenance", provenance) } } } }
     fun draftJson(row: DraftRow): JSONObject = row.json().put("attachments", JSONArray(ids(row.mediaIds).map { requireNotNull(dao.media(it)).json() }))
     fun delete(id: String) { dao.entry(id)?.let { deletedPins[id] = ids(it.mediaIds) }; dao.deleteEntry(id) }
-    fun references(): Set<String> = (dao.entries().flatMap { ids(it.mediaIds) } + dao.drafts().flatMap { ids(it.mediaIds) } + mediaPins + deletedPins.values.flatten()).toSet()
-    fun validTags(tags: List<String>): List<String> = tags.distinct().filter { dao.tag(it) != null }
+    fun references(): Set<String> = (dao.entries().flatMap { ids(it.mediaIds) } + dao.drafts().flatMap { ids(it.mediaIds) } + mediaPins + deletedPins.values.flatten() + dao.recovery().flatMap { SyncJournal.mediaIds(JSONObject(it.payload)) } + dao.syncRevisions().mapNotNull { it.payload }.flatMap { SyncJournal.mediaIds(JSONObject(it)) }).toSet()
+    fun validTags(tags: List<String>): List<String> = TagAliases.map(rawDao, tags).filter { dao.tag(it) != null }
     fun saveTag(id: String?, rawName: String, type: String? = null): TagRow {
+        val actualId = id?.let { TagAliases.canonical(rawDao, it) }
         val name = rawName.trim()
         require(name.isNotEmpty() && name.length <= 80) { "Use a tag name between 1 and 80 characters." }
-        val normalized = name.lowercase(java.util.Locale.ROOT)
-        require(dao.tags().none { it.normalizedName == normalized && it.id != id }) { "A tag with this name already exists." }
-        val categoryType = type ?: id?.let { dao.tag(it)?.type } ?: "standard"
+        val normalized = normalizeTag(name)
+        require(dao.tags().none { normalizeTag(it.name) == normalized && it.id != actualId }) { "A tag with this name already exists." }
+        val categoryType = type ?: actualId?.let { dao.tag(it)?.type } ?: "standard"
         require(categoryType in listOf("standard", "checklist")) { "Unknown category type." }
-        return TagRow(id ?: uid(), name, normalized, categoryType).also { dao.putTag(it) }
+        return TagRow(actualId ?: uid(), name, normalized, categoryType).also { dao.putTag(it) }
     }
     fun setCompleted(id: String, completed: Boolean) {
         val row = requireNotNull(dao.entry(id)) { "This thought no longer exists." }
@@ -94,11 +121,12 @@ class Repository(val db: MuseamoDatabase) {
     fun saveProfile(row: ProfileRow) {
         require(row.label.trim().isNotEmpty() && row.label.length <= 80) { "Give the widget a label (up to 80 characters)." }
         require(row.mode in listOf("fixed", "picker")) { "Unknown widget mode." }
-        dao.putProfile(row.copy(label = row.label.trim(), tagIds = jsonIds(validTags(ids(row.tagIds))), selectedTagId = row.selectedTagId?.takeIf { dao.tag(it) != null }))
+        dao.putProfile(row.copy(label = row.label.trim(), tagIds = jsonIds(validTags(ids(row.tagIds))), selectedTagId = row.selectedTagId?.let { TagAliases.canonical(rawDao, it) }?.takeIf { dao.tag(it) != null }))
     }
-    fun removeTag(id: String) = db.runInTransaction {
+    fun removeTag(originalId: String) = db.runInTransaction {
+        val id = TagAliases.canonical(rawDao, originalId)
         dao.deleteTag(id)
-        dao.entries().filter { id in ids(it.tagIds) }.forEach { dao.updateEntry(it.copy(tagIds = jsonIds(ids(it.tagIds) - id), updatedAt = System.currentTimeMillis())) }
+        dao.entries().filter { id in ids(it.tagIds) }.forEach { rawDao.updateEntry(it.copy(tagIds = jsonIds(ids(it.tagIds) - id))) }
         dao.profiles().forEach { dao.putProfile(it.copy(tagIds = jsonIds(ids(it.tagIds) - id), selectedTagId = it.selectedTagId?.takeUnless { value -> value == id })) }
         dao.drafts().forEach { dao.putDraft(it.copy(tagIds = jsonIds(ids(it.tagIds) - id))) }
     }
@@ -107,15 +135,23 @@ class Repository(val db: MuseamoDatabase) {
         val defaults = if (profile?.mode == "picker") listOfNotNull(profile.selectedTagId) else profile?.let { ids(it.tagIds) } ?: listOfNotNull(initialTag)
         return DraftRow(key, uid(), "", jsonIds(validTags(defaults)), profile?.id).also { dao.putDraft(it) }
     }
+    /** A blank new compose needs a new fix; unfinished drafts and Activity recreation keep their choices. */
+    fun prepareCaptureDraft(key: String, profile: ProfileRow?, initialTag: String?, resuming: Boolean): CaptureDraftOpening {
+        val existing = dao.draft(key)
+        val saved = existing ?: draft(key, profile, initialTag)
+        val newBlankCompose = !resuming && saved.text.isBlank() && ids(saved.mediaIds).isEmpty()
+        val prepared = if (newBlankCompose) saved.copy(location = null, locationAttempted = false).also { dao.putDraft(it) } else saved
+        return CaptureDraftOpening(prepared, (existing == null || newBlankCompose) && !prepared.locationAttempted)
+    }
     fun saveDraft(row: DraftRow) { validateMedia(ids(row.mediaIds)); if (dao.entry(row.entryId) == null) dao.putDraft(row.copy(tagIds = jsonIds(validTags(ids(row.tagIds))))) }
-    fun inlineTags(text: String): List<String> = Hashtags.names(text).map { name -> (dao.tags().find { it.name.equals(name, true) } ?: saveTag(null, name)).id }
+    fun inlineTags(text: String): List<String> = Hashtags.names(text).map { name -> (dao.tags().find { normalizeTag(it.name) == normalizeTag(name) } ?: saveTag(null, name)).id }
     fun commitDraft(row: DraftRow): EntryRow {
         require(row.text.isNotBlank() || ids(row.mediaIds).isNotEmpty()) { "Add text or an attachment." }; validateMedia(ids(row.mediaIds))
         var result: EntryRow? = null
         db.runInTransaction {
             result = dao.entry(row.entryId) ?: run {
                 val hashtagIds = Hashtags.names(row.text).map { name ->
-                    dao.tags().find { it.name.equals(name, ignoreCase = true) } ?: saveTag(null, name)
+                    dao.tags().find { normalizeTag(it.name) == normalizeTag(name) } ?: saveTag(null, name)
                 }.map { it.id }
                 EntryRow(row.entryId, row.text, System.currentTimeMillis(), System.currentTimeMillis(), tagIds = jsonIds(validTags(ids(row.tagIds)) + hashtagIds), profileId = row.profileId?.takeIf { dao.profile(it) != null }, mediaIds = row.mediaIds, location = row.location).also { dao.insertEntry(it) }
             }
@@ -127,7 +163,7 @@ class Repository(val db: MuseamoDatabase) {
         val old = requireNotNull(dao.entry(id)) { "This thought no longer exists." }
         val mediaIds = validateMedia(media ?: ids(old.mediaIds))
         require(text.isNotBlank() || ids(mediaIds).isNotEmpty()) { "Add text or an attachment." }
-        db.runInTransaction { dao.updateEntry(old.copy(locationSearch = if (updateLocation) PostLocation.search(location) else old.locationSearch, location = if (updateLocation) location else old.location, text = text, mediaIds = mediaIds, tagIds = jsonIds(validTags(tags) + Hashtags.names(text).filter { name -> Hashtags.names(old.text).none { it.equals(name, true) } || ids(old.tagIds).any { dao.tag(it)?.name?.equals(name, true) == true } }.map { name -> (dao.tags().find { it.name.equals(name, true) } ?: saveTag(null, name)).id }), updatedAt = System.currentTimeMillis())) }
+        db.runInTransaction { dao.updateEntry(old.copy(locationSearch = if (updateLocation) PostLocation.search(location) else old.locationSearch, location = if (updateLocation) location else old.location, text = text, mediaIds = mediaIds, tagIds = jsonIds(validTags(tags) + Hashtags.names(text).filter { name -> Hashtags.names(old.text).none { normalizeTag(it) == normalizeTag(name) } || ids(old.tagIds).any { dao.tag(it)?.name?.let { oldName -> normalizeTag(oldName) == normalizeTag(name) } == true } }.map { name -> (dao.tags().find { normalizeTag(it.name) == normalizeTag(name) } ?: saveTag(null, name)).id }), updatedAt = System.currentTimeMillis())) }
     }
     fun enrichLocation(id: String, original: String, enriched: String): Boolean {
         val entry = dao.entry(id) ?: return false
@@ -135,12 +171,21 @@ class Repository(val db: MuseamoDatabase) {
         dao.updateEntry(entry.copy(location = enriched, locationSearch = PostLocation.search(enriched)))
         return true
     }
-    fun restore(row: EntryRow) {
+    fun restore(row: EntryRow, suppliedProvenance: JSONObject? = null): EntryRow {
         validateMedia(ids(row.mediaIds))
         deletedPins.remove(row.id)
-        dao.insertEntry(row.copy(tagIds = jsonIds(validTags(ids(row.tagIds))), profileId = row.profileId?.takeIf { dao.profile(it) != null }))
+        var restored: EntryRow? = null
+        db.runInTransaction {
+            val next = row.copy(id = uid(), tagIds = jsonIds(validTags(ids(row.tagIds)) + inlineTags(row.text)), profileId = row.profileId?.takeIf { dao.profile(it) != null })
+            val provenance = suppliedProvenance ?: revision("thought", row.id)?.let { id -> dao.syncRevision(id)?.payload?.let { JSONObject(it).optJSONObject("provenance") } }
+            provenance?.let { rawDao.putSyncMetadata(SyncMetadataRow("provenance:thought:${next.id}", it.toString())) }
+            dao.insertEntry(next); restored = next
+        }
+        return requireNotNull(restored)
     }
 }
+
+fun normalizeTag(name: String): String = if (SyncCore.available()) SyncCore.request(JSONObject().put("action", "normalizeTag").put("name", name)).getString("name") else java.text.Normalizer.normalize(name.trim(), java.text.Normalizer.Form.NFC).lowercase(java.util.Locale.ROOT)
 
 val MEDIA_MIGRATION = object : androidx.room.migration.Migration(1, 2) {
     override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -163,15 +208,27 @@ val CHECKLIST_MIGRATION = object : androidx.room.migration.Migration(3, 4) {
         db.execSQL("ALTER TABLE entries ADD COLUMN completed INTEGER NOT NULL DEFAULT 0")
     }
 }
+val SYNC_MIGRATION = object : androidx.room.migration.Migration(4, 5) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("DROP INDEX IF EXISTS index_tags_normalizedName")
+        db.execSQL("CREATE INDEX index_tags_normalizedName ON tags(normalizedName)")
+        db.execSQL("CREATE TABLE sync_metadata (`key` TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE sync_revisions (id TEXT NOT NULL PRIMARY KEY, kind TEXT NOT NULL, entityId TEXT NOT NULL, origin TEXT NOT NULL, sequence INTEGER NOT NULL, header TEXT NOT NULL, payload TEXT)")
+        db.execSQL("CREATE INDEX index_sync_revisions_kind_entityId ON sync_revisions(kind,entityId)")
+        db.execSQL("CREATE TABLE recovery (id TEXT NOT NULL PRIMARY KEY, kind TEXT NOT NULL, entityId TEXT NOT NULL, payload TEXT NOT NULL, createdAt INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE sync_retired (kind TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY(kind,id))")
+    }
+}
 object Store {
     val executor = Executors.newSingleThreadExecutor()
     @Volatile private var repository: Repository? = null
     fun get(context: Context): Repository = repository ?: synchronized(this) {
-        repository ?: Repository(Room.databaseBuilder(context.applicationContext, MuseamoDatabase::class.java, "museamo.db").addMigrations(MEDIA_MIGRATION, LOCATION_MIGRATION, CHECKLIST_MIGRATION).build()).also { MediaFiles(context, it).apply { recoverInterruptedImports(); cleanup() }; repository = it }
+        repository ?: Repository(Room.databaseBuilder(context.applicationContext, MuseamoDatabase::class.java, "museamo.db").addMigrations(MEDIA_MIGRATION, LOCATION_MIGRATION, CHECKLIST_MIGRATION, SYNC_MIGRATION).build()).also { SyncJournal.configure(SyncIdentity(context.applicationContext)); MediaFiles(context, it).apply { recoverInterruptedImports(); cleanup() }; repository = it }
     }
-    fun changed(context: Context) {
+    fun changed(context: Context, localMutation: Boolean = true) {
         context.sendBroadcast(android.content.Intent("com.prdoring.museamo.DATA_CHANGED").setPackage(context.packageName))
         CaptureWidget.refresh(context)
+        if (localMutation) SyncRuntime.localDataChanged()
     }
 }
 

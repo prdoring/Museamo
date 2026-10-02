@@ -1,11 +1,13 @@
 import {
   Capacitor,
   registerPlugin,
-  type PluginListenerHandle,
 } from "@capacitor/core";
 import { type Attachment, MEDIA_LIMIT } from "./media";
 import { hashtags } from "./hashtags";
 import { type LocationLabelParts } from "./locationLabels";
+import { platform } from "./platform";
+import { desktopBridge } from "./desktop";
+import type { CompanionBridge } from "./sync";
 export { locationLabel } from "./locationLabels";
 export type LocationStatus = "available" | "services-off" | "permission-denied" | "disabled" | "timeout" | "cancelled" | "unavailable";
 export function locationStatusMessage(status: LocationStatus) {
@@ -29,10 +31,21 @@ export interface PostLocation extends LocationLabelParts {
 export interface Tag {
   id: string;
   name: string;
+  normalizedName?: string;
   type: "standard" | "checklist";
   count?: number;
 }
+/** Duplicate names can arrive through concurrent renames; IDs keep them separate. */
+export function tagDisplayName(tag: Tag, tags: Tag[]): string {
+  const normalize = (name: string) => name.trim().normalize("NFC").toLowerCase();
+  const normalized = tag.normalizedName ?? normalize(tag.name);
+  const collisions = tags.filter(other => (other.normalizedName ?? normalize(other.name)) === normalized);
+  if (collisions.length < 2) return tag.name;
+  const type = tag.type === "checklist" ? "Checklist" : "Standard";
+  return `${tag.name} · ${type}${collisions.filter(other => other.type === tag.type).length > 1 ? ` · ${tag.id.slice(0, 8)}` : ""}`;
+}
 export interface Entry {
+  revision?: string;
   location?: PostLocation | null;
   id: string;
   text: string;
@@ -82,13 +95,14 @@ export interface ComposeResult {
   cancelled: boolean;
   entryId?: string;
 }
-export interface MuseamoBridge {
+export interface MuseamoBridge extends CompanionBridge {
+  commitDraft(input: { draft: Draft }): Promise<{ entryId: string }>;
   openLocation(input: { latitude: number; longitude: number }): Promise<void>;
   locationSettings(): Promise<{ enabled: boolean; permitted: boolean }>;
   setLocationEnabled(input: { enabled: boolean }): Promise<{ enabled: boolean }>;
   currentLocation(): Promise<{ location: PostLocation | null; status: LocationStatus }>;
   pickMedia(input: { remaining: number }): Promise<{ attachments: Attachment[] }>;
-  resolveMedia(input: { id: string }): Promise<{ url: string; thumbnailUrl?: string }>;
+  resolveMedia(input: { id: string }): Promise<{ url: string; thumbnailUrl?: string; availability?: "available" | "pending" | "unsupported" }>;
   releaseMedia(input: { ids: string[] }): Promise<void>;
   releaseDeleted(input: { id: string }): Promise<void>;
   copyFormatted(input: { text: string; html: string }): Promise<void>;
@@ -99,6 +113,7 @@ export interface MuseamoBridge {
   library(): Promise<Library>;
   getEntry(input: { id: string }): Promise<{ entry: Entry | null }>;
   updateEntry(input: {
+    baseRevision?: string;
     id: string;
     text: string;
     tagIds: string[];
@@ -108,7 +123,7 @@ export interface MuseamoBridge {
   }): Promise<void>;
   setStar(input: { id: string; starred: boolean }): Promise<void>;
   setCompleted(input: { id: string; completed: boolean }): Promise<void>;
-  deleteEntry(input: { id: string }): Promise<void>;
+  deleteEntry(input: { id: string; baseRevision?: string }): Promise<void>;
   restoreEntry(input: { entry: Entry }): Promise<void>;
   saveTag(input: { id?: string; name: string; type?: Tag["type"] }): Promise<void>;
   deleteTag(input: { id: string }): Promise<void>;
@@ -133,7 +148,7 @@ export interface MuseamoBridge {
   addListener(
     event: "dataChanged",
     callback: () => void,
-  ): Promise<PluginListenerHandle>;
+  ): Promise<{ remove(): Promise<void> }>;
 }
 export const isNative = Capacitor.isNativePlatform();
 export const previewTags: Tag[] = [
@@ -337,6 +352,26 @@ const resolveAttachments = (ids: string[]) => {
 };
 let previewLocationEnabled = true;
 const browser: MuseamoBridge = {
+  async getSyncState() { return { enabled: false, phase: "idle", devices: [], nearby: [] }; },
+  async listDevices() { return { devices: [], nearby: [] }; },
+  async linkDevice() { throw new Error("Link devices from the installed Android or Windows app."); },
+  async confirmPairing() { throw new Error("Device linking is unavailable in the preview."); },
+  async acceptEnrollment() { throw new Error("Device linking is unavailable in the preview."); },
+  async syncNow() { throw new Error("Device linking is unavailable in the preview."); },
+  async removeDevice() { throw new Error("Device linking is unavailable in the preview."); },
+  async cancelPairing() {},
+  async listRecovery() { return { items: [...deletedMedia.values()].map(payload => ({ id: payload.id, kind: "entry", entityId: payload.id, payload: clone(payload), createdAt: payload.updatedAt })) }; },
+  async restoreRecovery({ id }) {
+    const entry = deletedMedia.get(id);
+    if (!entry) throw new Error("This version is no longer in Recovery.");
+    const entryId = crypto.randomUUID();
+    entries.push(clone({ ...entry, id: entryId })); changed(); return { entryId };
+  },
+  async clearRecovery({ id }) { deletedMedia.delete(id); collectBrowserMedia(); changed(); },
+  async clearAllRecovery() { deletedMedia.clear(); collectBrowserMedia(); changed(); },
+  async getStartupSettings() { return { enabled: false }; },
+  async setStartupEnabled() { throw new Error("Startup settings are available in the Windows app."); },
+  async commitDraft({ draft }) { return { entryId: preview.save(draft) }; },
   async openLocation({ latitude, longitude }) { await browser.openExternal({ url: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}` }); },
   async locationSettings() { return { enabled: previewLocationEnabled, permitted: true }; },
   async setLocationEnabled({ enabled }) { previewLocationEnabled = enabled; return { enabled }; },
@@ -552,6 +587,5 @@ const browser: MuseamoBridge = {
     };
   },
 };
-export const bridge = isNative
-  ? registerPlugin<MuseamoBridge>("Museamo")
-  : browser;
+export const bridge = platform === "android" ? registerPlugin<MuseamoBridge>("Museamo")
+  : platform === "desktop" ? desktopBridge() : browser;

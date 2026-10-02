@@ -57,11 +57,40 @@ class MuseamoPlugin : Plugin() {
         if (LocationCapture.permitted(context)) { LocationCapture.setEnabled(context, true); captureCurrentLocation(call) }
         else locationResult(call, LocationCapture.Result(null, "permission-denied"))
     }
-    override fun handleOnPause() { cancelLocation?.invoke(); cancelLocation = null }
+    override fun handleOnPause() { cancelLocation?.invoke(); cancelLocation = null; SyncRuntime.pause() }
     private val receiver = object : BroadcastReceiver() { override fun onReceive(context: Context, intent: Intent) { notifyListeners("dataChanged", JSObject()) } }
     override fun load() { ContextCompat.registerReceiver(context, receiver, IntentFilter("com.prdoring.museamo.DATA_CHANGED"), ContextCompat.RECEIVER_NOT_EXPORTED) }
-    override fun handleOnDestroy() { context.unregisterReceiver(receiver) }
-    override fun handleOnResume() { notifyListeners("dataChanged", JSObject()) }
+    override fun handleOnDestroy() { context.unregisterReceiver(receiver); SyncRuntime.pause() }
+    override fun handleOnResume() { SyncRuntime.resume(context); notifyListeners("dataChanged", JSObject()) }
+    private fun syncTask(call: PluginCall, method: String) {
+        SyncRuntime.executor.execute {
+            try { val result = if (method == "getSyncState") SyncRuntime.state(context) else SyncRuntime.command(context, method, call.data); call.resolve(JSObject(result.toString())) }
+            catch (error: Throwable) { call.reject(error.message ?: "Device sync failed", Exception(error)) }
+        }
+    }
+    @PluginMethod fun getSyncState(call: PluginCall) = syncTask(call, "getSyncState")
+    @PluginMethod fun listDevices(call: PluginCall) = syncTask(call, "listDevices")
+    @PluginMethod fun linkDevice(call: PluginCall) = syncTask(call, "linkDevice")
+    @PluginMethod fun confirmPairing(call: PluginCall) = syncTask(call, "confirmPairing")
+    @PluginMethod fun acceptEnrollment(call: PluginCall) = syncTask(call, "acceptEnrollment")
+    @PluginMethod fun cancelPairing(call: PluginCall) = syncTask(call, "cancelPairing")
+    @PluginMethod fun syncNow(call: PluginCall) = syncTask(call, "syncNow")
+    @PluginMethod fun removeDevice(call: PluginCall) = syncTask(call, "removeDevice")
+    @PluginMethod fun listRecovery(call: PluginCall) = task(call) { repo -> JSObject().put("items", JSONArray(repo.rawDao.recovery().map { item -> org.json.JSONObject().put("id", item.id).put("kind", item.kind).put("entityId", item.entityId).put("payload", org.json.JSONObject(item.payload)).put("createdAt", item.createdAt) })) }
+    @PluginMethod fun restoreRecovery(call: PluginCall) = task(call, true) { repo ->
+        val item = requireNotNull(repo.rawDao.recoveryItem(requireNotNull(call.getString("id")))) { "Recovery item no longer exists" }
+        if (item.kind == "thought") { val payload = org.json.JSONObject(item.payload); JSObject().put("entryId", repo.restore(Backup.entry(payload), payload.optJSONObject("provenance")).id) }
+        else {
+            val payload = org.json.JSONObject(item.payload); val original = payload.getString("name"); var name = original; var suffix = 1
+            while (repo.dao.tags().any { normalizeTag(it.name) == normalizeTag(name) }) { val extra = " restored $suffix"; val prefix = original.take(80 - extra.length).let { if (it.lastOrNull()?.isHighSurrogate() == true) it.dropLast(1) else it }; name = prefix + extra; suffix++ }
+            repo.saveTag(null, name, payload.getString("type")); JSObject()
+        }
+    }
+    @PluginMethod fun clearRecovery(call: PluginCall) = task(call, true) { repo -> SyncPlatform(context).clearRecovery(repo, requireNotNull(call.getString("id"))); MediaFiles(context, repo).cleanup(); JSObject() }
+    @PluginMethod fun clearAllRecovery(call: PluginCall) = task(call, true) { repo ->
+        val platform = SyncPlatform(context); repo.db.runInTransaction { repo.rawDao.recovery().map { it.id }.forEach { id -> if (repo.rawDao.recoveryItem(id) != null) platform.clearRecovery(repo, id) } }
+        MediaFiles(context, repo).cleanup(); JSObject()
+    }
     private fun task(call: PluginCall, mutate: Boolean = false, block: (Repository) -> JSObject) {
         Store.executor.execute {
             try { val result = block(Store.get(context)); if (mutate) Store.changed(context); call.resolve(result) }
@@ -87,9 +116,10 @@ class MuseamoPlugin : Plugin() {
     }
     @PluginMethod fun resolveMedia(call: PluginCall) = task(call) { repo ->
         val id = requireNotNull(call.getString("id")); requireNotNull(repo.dao.media(id)) { "Media is unavailable." }
-        val files = MediaFiles(context, repo); require(files.file(id).isFile) { "Media is unavailable." }
+        val files = MediaFiles(context, repo)
+        if (!files.file(id).isFile) return@task JSObject().put("availability", "pending")
         val url = "https://com.prdoring.museamo/_media/$id"
-        JSObject().put("url", url).also { if (files.thumbnail(id).isFile) it.put("thumbnailUrl", "$url/thumbnail") }
+        JSObject().put("url", url).put("availability", "available").also { if (files.thumbnail(id).isFile) it.put("thumbnailUrl", "$url/thumbnail") }
     }
     @PluginMethod fun releaseMedia(call: PluginCall) = task(call) { repo ->
         ids(call.getArray("ids")?.toString() ?: "[]").forEach { repo.mediaPins.remove(it) }
@@ -126,8 +156,10 @@ class MuseamoPlugin : Plugin() {
         JSObject().put("entries", JSONArray(rows.take(limit).map { repo.entryJson(it) })).put("hasMore", rows.size > limit)
     }
     @PluginMethod fun getEntry(call: PluginCall) = task(call) { repo -> JSObject().put("entry", repo.dao.entry(requireNotNull(call.getString("id")))?.let { repo.entryJson(it) } ?: org.json.JSONObject.NULL) }
-    @PluginMethod fun library(call: PluginCall) = task(call) { repo -> JSObject().put("tags", JSONArray(repo.dao.tags().map { it.json().put("count", repo.dao.tagCount("\"${it.id}\"")) })).put("profiles", JSONArray(repo.dao.profiles().map { it.json() })) }
+    @PluginMethod fun library(call: PluginCall) = task(call) { repo -> JSObject().put("tags", JSONArray(repo.dao.tags().map { it.json().put("normalizedName", normalizeTag(it.name)).put("count", repo.dao.tagCount("\"${it.id}\"")) })).put("profiles", JSONArray(repo.dao.profiles().map { it.json() })) }
     @PluginMethod fun updateEntry(call: PluginCall) = task(call, true) { repo ->
+        val base = call.getString("baseRevision")
+        repo.requireThoughtRevision(requireNotNull(call.getString("id")), base)
         val location = PostLocation.parse(call.data.opt("location"))
         val entryId = requireNotNull(call.getString("id"))
         val before = repo.dao.entry(entryId)?.location
@@ -145,8 +177,12 @@ class MuseamoPlugin : Plugin() {
         repo.setCompleted(requireNotNull(call.getString("id")), completed)
         JSObject()
     }
-    @PluginMethod fun deleteEntry(call: PluginCall) = task(call, true) { repo -> repo.delete(requireNotNull(call.getString("id"))); JSObject() }
-    @PluginMethod fun restoreEntry(call: PluginCall) = task(call, true) { repo -> repo.restore(Backup.entry(requireNotNull(call.getObject("entry")))); JSObject() }
+    @PluginMethod fun deleteEntry(call: PluginCall) = task(call, true) { repo ->
+        val id = requireNotNull(call.getString("id")); val base = call.getString("baseRevision")
+        repo.requireThoughtRevision(id, base)
+        repo.delete(id); JSObject()
+    }
+    @PluginMethod fun restoreEntry(call: PluginCall) = task(call, true) { repo -> val entry = requireNotNull(call.getObject("entry")); JSObject().put("entryId", repo.restore(Backup.entry(entry), entry.optJSONObject("provenance")).id) }
     @PluginMethod fun saveTag(call: PluginCall) = task(call, true) { repo ->
         require(!call.data.has("type") || call.data.opt("type") is String) { "Invalid category type." }
         repo.saveTag(call.getString("id"), requireNotNull(call.getString("name")), call.getString("type")); JSObject()
@@ -162,6 +198,14 @@ class MuseamoPlugin : Plugin() {
     @PluginMethod fun updateDraft(call: PluginCall) = task(call) { repo ->
         val draft = requireNotNull(repo.dao.draft(requireNotNull(call.getString("profileKey")))) { "Open a draft before editing it." }
         repo.saveDraft(draft.copy(location = if (call.data.has("location")) PostLocation.parse(call.data.opt("location")) else draft.location, locationAttempted = call.getBoolean("locationAttempted") ?: draft.locationAttempted, text = requireNotNull(call.getString("text")), tagIds = requireNotNull(call.getArray("tagIds")).toString(), mediaIds = call.getArray("attachmentIds")?.toString() ?: draft.mediaIds)); JSObject()
+    }
+    @PluginMethod fun commitDraft(call: PluginCall) = task(call, true) { repo ->
+        val input = requireNotNull(call.getObject("draft")); val key = requireNotNull(input.getString("profileKey"))
+        val existing = requireNotNull(repo.dao.draft(key)) { "Open a draft before saving it." }
+        require(input.getString("entryId") == existing.entryId) { "This draft changed. Reload it before saving." }
+        val mediaIds = input.optJSONArray("attachmentIds")?.toString() ?: input.optJSONArray("attachments")?.let { attachments -> jsonIds((0 until attachments.length()).map { attachments.getJSONObject(it).getString("id") }) } ?: existing.mediaIds
+        val row = existing.copy(text = requireNotNull(input.getString("text")), tagIds = input.getJSONArray("tagIds").toString(), mediaIds = mediaIds, location = if (input.has("location")) PostLocation.parse(input.opt("location")) else existing.location)
+        JSObject().put("entryId", repo.commitDraft(row).id)
     }
     @PluginMethod fun discardDraft(call: PluginCall) = task(call) { repo -> repo.dao.deleteDraft(requireNotNull(call.getString("profileKey"))); MediaFiles(context, repo).cleanup(); JSObject() }
     @PluginMethod fun compose(call: PluginCall) { startActivityForResult(call, Intent(context, CaptureActivity::class.java).putExtra("initialTag", call.getString("tagId")), "composeResult") }
