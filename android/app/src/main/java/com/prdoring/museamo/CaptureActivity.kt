@@ -303,7 +303,7 @@ class CaptureActivity : NativeScreen() {
             val tag = matches.find { it.id == id }
             control.text = if (tag == null) "Use new tag “${token.query.trim()}”" else android.text.TextUtils.concat("# ", tag.displayLabel(this))
             control.contentDescription = tag?.accessibleLabel() ?: control.text
-            control.setOnClickListener { complete(tag?.name ?: token.query.trim(), token) }
+            control.setOnClickListener { tag?.let { chosen -> draft = draft?.copy(tagIds = jsonIds(ids(draft?.tagIds ?: "[]").filter { id -> tags.none { it.id == id && it.name.equals(chosen.name, true) } } + chosen.id)) }; complete(tag?.name ?: token.query.trim(), token); persist(); updateChips() }
         }, animate = false)
     }
     private fun complete(name: String, token: Hashtags.Token) {
@@ -317,11 +317,11 @@ class CaptureActivity : NativeScreen() {
         val names = (tags.filter { it.id in explicit }.map { it.name } + inline).distinctBy { it.lowercase(java.util.Locale.ROOT) }
         NativeMotion.reconcile(chips, names, { button("") {}.apply { layoutParams = LinearLayout.LayoutParams(-2, dp(48)).apply { marginEnd = dp(4) } } }, { view, name ->
             val control = view as Button
-            val displayTag = tags.find { it.name.equals(name, true) }
+            val matches = tags.filter { it.name.equals(name, true) }; val displayTag = matches.singleOrNull() ?: matches.filter { it.id in explicit }.singleOrNull()
             control.text = android.text.TextUtils.concat("# ", displayTag?.displayLabel(this, R.color.widget_selection_text) ?: name)
             control.setOnClickListener {
             if (!committing) {
-                val tag = tags.find { it.name.equals(name, true) }
+                val tag = displayTag
                 draft = draft?.copy(tagIds = jsonIds(explicit - listOfNotNull(tag?.id)))
                 val position = input.selectionStart
                 input.removeHashtag(name); input.setSelection(position.coerceIn(0, input.length())); updateChips(); persist()
@@ -349,7 +349,7 @@ class CaptureActivity : NativeScreen() {
                 val selected = ids(draft?.tagIds ?: "[]")
                 val inline = Hashtags.names(input.text.toString())
                 tags.filter { it.name.contains(search.text.toString(), true) }.forEach { tag ->
-                    val checked = tag.id in selected || inline.any { it.equals(tag.name, true) }
+                    val checked = tag.id in selected || tags.count { it.name.equals(tag.name, true) } == 1 && inline.any { it.equals(tag.name, true) }
                     list.addView(button(android.text.TextUtils.concat(if (checked) "✓  " else "#  ", tag.displayLabel(this, if (checked) R.color.widget_selection_text else R.color.widget_text))) {
                         draft = draft?.copy(tagIds = jsonIds(if (checked) selected - tag.id else selected + tag.id))
                         if (checked) { input.removeHashtag(tag.name); input.setSelection(input.length()) }

@@ -165,6 +165,38 @@ fn verify_signature(key: &str, bytes: &[u8], signature: &str) -> Result<(), Stri
 }
 
 impl Coordinator {
+    /// A sharing participant is an existing personal library, never another user's library.
+    pub fn sharing_proof(&self, initialize: bool) -> Result<Value, String> {
+        let _gate = self.session_gate.lock().map_err(|_| "Sync session gate unavailable")?;
+        let mut state = self.state.lock().map_err(|_| "Sync state unavailable")?;
+        if state.persistent.group_id.is_none() && initialize {
+            let mut next = state.persistent.clone();
+            next.group_id = Some(unique()?);
+            next.controls.push(self.make_control(&next, "genesis", serde_json::to_value(&self.identity).map_err(|e| e.to_string())?)?);
+            self.platform_call("syncEnroll", json!({"groupId": next.group_id}))?;
+            self.save(&next)?;
+            state.persistent = next;
+        }
+        Ok(json!({"group":state.persistent.group_id,"controls":state.persistent.controls}))
+    }
+    pub fn verify_sharing_proof(&self, proof: &Value) -> Result<BTreeMap<String, Identity>, String> {
+        Self::sharing_members(proof)
+    }
+    pub fn sharing_members(proof: &Value) -> Result<BTreeMap<String, Identity>, String> {
+        let group = text(proof, "group")?;
+        let controls: Vec<Control> = serde_json::from_value(proof["controls"].clone()).map_err(|_| "Invalid personal-library proof")?;
+        if controls.is_empty() { return Err("Missing personal-library root".into()); }
+        Self::validate_membership(&controls, Some(group))?;
+        let view = membership_view(&controls)?;
+        if view.quarantined { return Err(QUARANTINE_ERROR.into()); }
+        Ok(view.active)
+    }
+    pub fn sharing_identity(&self) -> Identity { self.identity.clone() }
+    pub(crate) fn sharing_fence(&self, peer:Option<&Identity>) -> Result<std::sync::MutexGuard<'_,()>,String> {
+        let gate=self.session_gate.lock().map_err(|_|"Sync session gate unavailable")?;
+        let state=self.state.lock().map_err(|_|"Sync state unavailable")?;let view=membership_view(&state.persistent.controls)?;
+        if !view.active.contains_key(&self.identity.device_id) || view.quarantined || peer.is_some_and(|peer|view.active.get(&peer.device_id)!=Some(peer)) {return Err("This personal device was removed".into());}drop(state);Ok(gate)
+    }
     pub fn new(platform: Arc<dyn Platform>) -> Result<Arc<Self>, String> {
         let raw = platform.call("syncIdentity", json!({}))?;
         let identity = Identity {
@@ -829,7 +861,8 @@ impl Coordinator {
         }
         Ok(())
     }
-    fn validate_controls(&self, controls: &[Control], group: Option<&str>) -> Result<(), String> {
+    fn validate_controls(&self, controls: &[Control], group: Option<&str>) -> Result<(), String> { Self::validate_membership(controls, group) }
+    fn validate_membership(controls: &[Control], group: Option<&str>) -> Result<(), String> {
         if controls.len() > 8192 {
             return Err("Too many membership records".into());
         }
@@ -974,7 +1007,7 @@ impl Coordinator {
                 next.controls.push(record);
             }
         }
-        self.validate_controls(&next.controls, Some(group))?;
+        Self::validate_membership(&next.controls, Some(group))?;
         if membership_view(&next.controls)?.quarantined {
             self.quarantined.store(true, Ordering::SeqCst);
         }
@@ -1988,7 +2021,7 @@ fn membership_view(controls: &[Control]) -> Result<Membership, String> {
     Ok(view)
 }
 
-fn parse_address(address: &str) -> Result<SocketAddr, String> {
+pub(crate) fn parse_address(address: &str) -> Result<SocketAddr, String> {
     // Literal IP addresses avoid DNS rebinding and arbitrary internet destinations. Discovery
     // may change hints, but cannot change the pinned identity during Noise authentication.
     let address: SocketAddr = normalize_address(
@@ -2307,7 +2340,7 @@ impl Coordinator {
             format!("museamo-sync-v1\0{group}").as_bytes(),
         )?;
         let mine =
-            wire::canonical(&json!({"identity":self.identity,"listenPort":port,"group":group}))?;
+            wire::canonical(&json!({"identity":self.identity,"listenPort":port,"group":group,"sharingCapability":crate::sharing::CAPABILITY}))?;
         let mut buffer = vec![0; 16384];
         let mut output = vec![0; 16384];
         let peer_payload = if initiator {
@@ -2386,6 +2419,7 @@ impl Coordinator {
             || self.state.lock().map_err(|_| "Sync state unavailable")?.runtime.outbound_sessions.contains(&peer.device_id);
         let remote = channel.exchange(&json!({"signature":self.sign(&proof)?,"outboundPending":outbound_pending}))?;
         verify_signature(&peer.signing_public, &proof, text(&remote, "signature")?)?;
+        if peer_payload["sharingCapability"] != crate::sharing::CAPABILITY && self.platform_call("syncSharingRequired",json!({}))?["required"]==true { return Err(format!("Update Museamo on {} to sync a library containing shared hashtags.",peer.name)); }
         channel.authorization = Some((Arc::clone(self), peer.clone(), false));
         let known = {
             let state = self.state.lock().map_err(|_| "Sync state unavailable")?;

@@ -23,12 +23,20 @@ class SyncPlatform(private val context: Context, private val testRepository: Rep
     } catch (error: Exception) { JSONObject().put("ok", false).put("error", error.cause?.message ?: error.message ?: "Native sync operation failed").toString() }
 
     private fun dispatch(method: String, input: JSONObject, repo: Repository): JSONObject = when (method) {
+        "syncSharingRequired" -> JSONObject().put("required", repo.rawDao.tags().any { ShareStorage.isShared(repo.rawDao, it.id) })
+        "shareLoad" -> JSONObject().put("registry", repo.rawDao.sharingState("registry")?.value?.let(::JSONObject) ?: JSONObject.NULL)
+        "sharePending" -> JSONObject().put("items", JSONArray(repo.rawDao.sharingPending().map { JSONObject(it.payload) }))
+        "shareSeed" -> ShareStorage.seed(repo, input.getString("tagId"))
+        "shareCommit" -> { ShareStorage.commit(repo, input); Store.changed(context, localMutation = false); JSONObject().put("registry", ShareStorage.registry(repo.rawDao)) }
+        "shareMissingMedia" -> missingMedia(repo, 32, shareMedia(repo, input.getString("scope")))
+        "shareReadMedia" -> { require(input.getString("id") in shareMedia(repo, input.getString("scope"))) { "Original is not in this shared list" }; readMedia(repo, input) }
+        "shareWriteMedia" -> { require(input.getString("id") in shareMedia(repo, input.getString("scope"))) { "Original is not in this shared list" }; writeMedia(repo, input) }
         "syncIdentity" -> identity.identity(repo)
         "syncSign" -> JSONObject().put("signature", identity.sign(SyncIdentity.decode(input.getString("bytes"))))
         "syncLoad" -> JSONObject().put("state", repo.rawDao.syncMetadata("coordinator")?.value?.let { JSONObject(it) } ?: JSONObject.NULL)
         "syncSave" -> { repo.rawDao.putSyncMetadata(SyncMetadataRow("coordinator", input.getJSONObject("state").toString())); JSONObject() }
         "syncSummary" -> { val media = (repo.dao.entries().flatMap { ids(it.mediaIds) } + repo.dao.recovery().flatMap { SyncJournal.mediaIds(JSONObject(it.payload)) }).distinct().mapNotNull { repo.dao.media(it) }; JSONObject().put("thoughts", repo.dao.entries().size).put("tags", repo.dao.tags().size).put("attachments", media.size).put("attachmentBytes", media.sumOf { it.byteSize }) }
-        "syncEnrollmentTags" -> JSONObject().put("tags", JSONArray(repo.rawDao.tags().map { it.json() }))
+        "syncEnrollmentTags" -> JSONObject().put("tags", JSONArray(repo.rawDao.tags().filter { !ShareStorage.isShared(repo.rawDao, it.id) }.map { it.json() }))
         "syncCoalesceTags" -> { coalesceTags(repo, input); Store.changed(context, localMutation = false); JSONObject() }
         "syncEnroll" -> { enroll(repo, input.getString("groupId")); JSONObject() }
         "syncExport" -> export(repo, input)
@@ -72,7 +80,7 @@ class SyncPlatform(private val context: Context, private val testRepository: Rep
         val dao = repo.rawDao; val enrollment = input.getString("enrollmentId"); require(enrollment.length in 1..256)
         if (dao.syncMetadata("coalesced:$enrollment") != null) return@runInTransaction
         fun snapshot(key: String): List<JSONObject> = input.getJSONArray(key).let { a -> (0 until a.length()).map { a.getJSONObject(it) }.onEach { tag -> require(java.util.UUID.fromString(tag.getString("id")).toString() == tag.getString("id")); require(tag.getString("name").trim().isNotEmpty() && tag.getString("name").length <= 80 && tag.getString("type") in setOf("standard", "checklist")) } }
-        fun effective(tags: List<JSONObject>) = tags.map { JSONObject(it.toString()).put("id", TagAliases.canonical(dao, it.getString("id"))) }
+        fun effective(tags: List<JSONObject>) = tags.filter { !ShareStorage.isShared(dao, it.getString("id")) && !ShareStorage.isShared(dao, TagAliases.canonical(dao, it.getString("id"))) }.map { JSONObject(it.toString()).put("id", TagAliases.canonical(dao, it.getString("id"))) }
         val local = effective(snapshot("localTags")); val peer = effective(snapshot("peerTags")); val localIds = local.map { it.getString("id") }.toSet(); val peerIds = peer.map { it.getString("id") }.toSet()
         (local + peer).groupBy { normalizeTag(it.getString("name")) to it.getString("type") }.forEach { (key, tags) ->
             val ids = tags.map { it.getString("id") }.distinct().sorted()
@@ -238,6 +246,8 @@ class SyncPlatform(private val context: Context, private val testRepository: Rep
         val dao = repo.rawDao; val applied = SyncJournal.receipts(dao); val rows = (if (kind == "tag") dao.syncRevisions().filter { it.kind == "tag" && TagAliases.canonical(dao, it.entityId) == id } else dao.entityRevisions(kind, id)).filter { it.sequence <= applied.optLong(it.origin, 0) }
         val result = SyncCore.request(JSONObject().put("action", "winner").put("revisions", JSONArray(rows.map { row -> SyncJournal.revision(row).also { if (kind == "tag") it.put("entityId", id) } })).put("retired", dao.retired(kind, id) != null))
         val winner = result.optJSONObject("revision"); val headId = winner?.getJSONObject("dot")?.let { "${it.getString("origin")}:${it.getLong("sequence")}" }
+        val incoming = if (winner?.optBoolean("deleted") == false) headId?.let { dao.syncRevision(it)?.payload?.let(::JSONObject) } else null
+        if (ShareStorage.personalProjection(dao, kind, id, incoming)) { if (headId != null) dao.putSyncMetadata(SyncMetadataRow("head:$kind:$id", headId)); return }
         rows.filter { it.payload != null && (it.id != headId || winner?.optBoolean("deleted") == true) && dao.syncMetadata("purged:${it.id}") == null }.forEach { dao.putRecovery(RecoveryRow(it.id, kind, it.entityId, requireNotNull(it.payload), SyncJournal.revision(it).getJSONObject("clock").getLong("wall"))) }
         if (winner == null || winner.getBoolean("deleted")) { if (kind == "thought") dao.deleteEntry(id) else dao.deleteTag(id) }
         else {
@@ -266,8 +276,14 @@ class SyncPlatform(private val context: Context, private val testRepository: Rep
     // Local garbage-collection references also include private drafts and transient edit pins.
     // A linked peer is authorized only by the currently shared saved library and Recovery.
     private fun sharedMedia(repo: Repository): Set<String> = (repo.rawDao.entries().flatMap { ids(it.mediaIds) } + repo.rawDao.recovery().flatMap { SyncJournal.mediaIds(JSONObject(it.payload)) }).toSet()
-    private fun missingMedia(repo: Repository, limit: Int): JSONObject {
-        val files = MediaFiles(context, repo); val referenced = sharedMedia(repo)
+    private fun shareMedia(repo: Repository, scopeId: String): Set<String> {
+        val scope = ShareStorage.registry(repo.rawDao).getJSONObject("scopes").getJSONObject(scopeId)
+        require(ShareStorage.active(scope, repo.rawDao.syncMetadata("group")?.value)) { "You no longer belong to this shared hashtag" }
+        val records = scope.getJSONArray("records")
+        return (0 until records.length()).flatMap { SyncJournal.mediaIds(records.getJSONObject(it).getJSONObject("payload")) }.toSet()
+    }
+    private fun missingMedia(repo: Repository, limit: Int, referenced: Set<String> = sharedMedia(repo)): JSONObject {
+        val files = MediaFiles(context, repo)
         val missing = repo.rawDao.media().filter { it.id in referenced && !files.file(it.id).isFile }
         return JSONObject().put("totalCount", missing.size).put("items", JSONArray(missing.take(limit).map { row -> JSONObject().put("id", row.id).put("checksum", row.checksum).put("size", row.byteSize).put("offset", staging(row.id).length().coerceAtMost(row.byteSize)).put("metadata", row.json()) }))
     }
@@ -299,6 +315,7 @@ class SyncPlatform(private val context: Context, private val testRepository: Rep
     }
 
     fun clearRecovery(repo: Repository, id: String) = repo.db.runInTransaction {
+        if (ShareStorage.clearRecovery(repo.rawDao, id)) return@runInTransaction
         val item = requireNotNull(repo.rawDao.recoveryItem(id)) { "Recovery item no longer exists" }
         val retired = item.kind == "thought" && repo.rawDao.entry(item.entityId) == null
         val revisions = if (retired) repo.rawDao.entityRevisions("thought", item.entityId).map { it.id } else listOf(item.id)

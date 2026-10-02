@@ -2,6 +2,7 @@ package com.prdoring.museamo
 
 import android.os.Bundle
 import android.os.Build
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
@@ -36,7 +37,7 @@ abstract class NativeScreen : AppCompatActivity() {
     }
     val accent get() = ContextCompat.getColor(this, R.color.widget_accent)
     val font get() = ResourcesCompat.getFont(this, R.font.dm_sans)
-    val headingFont get() = ResourcesCompat.getFont(this, R.font.trailhead_clean)
+    val headingFont get() = Typeface.create(ResourcesCompat.getFont(this, R.font.dm_sans), Typeface.BOLD)
     val writingFont get() = ResourcesCompat.getFont(this, R.font.source_serif)
     fun color(id: Int) = ContextCompat.getColor(this, id)
     fun heading(text: String) = label(text, 24).apply { typeface = headingFont; letterSpacing = .035f }

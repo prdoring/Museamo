@@ -2,6 +2,7 @@
   "name": "museamo",
   "version": "0.4.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -16,7 +17,13 @@
     "desktop:dev": "node scripts/desktop.mjs dev",
     "desktop:build": "node scripts/desktop.mjs build",
     "android:sync-core": "node scripts/build-sync-android.mjs",
-    "test:sync": "cargo test -p museamo-sync-core"
+    "test:sync": "cargo test -p museamo-sync-core",
+    "release": "node scripts/release.mjs push",
+    "release:build": "node scripts/release.mjs build",
+    "release:publish": "node scripts/release.mjs publish",
+    "release:check": "node scripts/release.mjs check",
+    "release:setup": "node scripts/release.mjs setup",
+    "test:release": "node --test scripts/release.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",

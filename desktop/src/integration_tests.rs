@@ -951,3 +951,420 @@ fn large_signed_library_exports_in_bounded_batches_and_finishes_paging() {
     b.platform.call("syncApply",json!({"groupId":group,"members":members,"envelopes":second["envelopes"],"purgeProofs":second["purgeProofs"],"authorizedHistory":{},"authorizedAnchors":{}})).unwrap();
     assert_eq!(b.db.lock().unwrap().all("thought").unwrap().len(), 3);
 }
+
+struct SharedDevice {
+    device: Device,
+    sharing: Arc<museamo_sync_core::sharing::ShareService>,
+}
+impl SharedDevice {
+    fn new() -> Self {
+        let device = Device::new();
+        let sharing = museamo_sync_core::sharing::ShareService::new(
+            device.platform.clone(),
+            device.sync.clone(),
+        )
+        .unwrap();
+        sharing.start("127.0.0.1:0").unwrap();
+        Self { device, sharing }
+    }
+    fn tag(&self, name: &str) -> String {
+        let id = store::id();
+        self.device
+            .db
+            .lock()
+            .unwrap()
+            .command("saveTag", &json!({"id":id,"name":name,"type":"checklist"}))
+            .unwrap();
+        id
+    }
+    fn wake(&self) {
+        self.sharing.local_data_changed();
+        self.device.trigger();
+    }
+    fn hint(&self, other: &SharedDevice) {
+        let state = other.sharing.command("getSharingState", json!({})).unwrap();
+        self.sharing
+            .command(
+                "shareDiscoveryHint",
+                json!({"deviceId":state["deviceId"],"address":state["address"]}),
+            )
+            .unwrap();
+    }
+    fn registry(&self) -> museamo_sync_core::sharing::Registry {
+        self.device.db.lock().unwrap().sharing_registry().unwrap()
+    }
+}
+impl Drop for SharedDevice {
+    fn drop(&mut self) {
+        self.sharing.stop();
+    }
+}
+#[test]
+fn shared_lists_use_real_sqlite_scopes_and_linked_devices_keep_private_metadata() {
+    let owner = SharedDevice::new();
+    let partner = SharedDevice::new();
+    let desktop = SharedDevice::new();
+    pair(&partner.device, &desktop.device);
+    let tag = owner.tag("Movies");
+    let private = owner.tag("Private");
+    let item = owner.device.append("PRIVATE pre-sharing revision");
+    {
+        let mut db = owner.device.db.lock().unwrap();
+        let mut e = db.get("thought", &item).unwrap().unwrap();
+        e["text"] = json!("Arrival #Private");
+        e["tagIds"] = json!([tag, private]);
+        e["starred"] = json!(true);
+        e["provenance"] = json!({"label":"PRIVATE widget","profileId":null});
+        db.record("thought", &item, e, false).unwrap();
+    }
+    let scope = owner
+        .sharing
+        .command("startTagSharing", json!({"tagId":tag}))
+        .unwrap()["collectionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let invite = owner
+        .sharing
+        .command("createTagInvite", json!({"tagId":tag}))
+        .unwrap();
+    let joined = partner
+        .sharing
+        .command("joinTagShare", json!({"invite":invite["invite"]}))
+        .unwrap();
+    let partner_tag = joined["tagId"].as_str().unwrap().to_owned();
+    let partner_item = partner.registry().bindings[&scope].entries[&item].clone();
+    assert_eq!(
+        partner.device.get(&partner_item).unwrap()["text"],
+        "Arrival #Private"
+    );
+    assert_eq!(
+        partner.device.get(&partner_item).unwrap()["tagIds"],
+        json!([partner_tag])
+    );
+    assert_eq!(partner.device.get(&partner_item).unwrap()["starred"], false);
+    assert!(partner.device.get(&partner_item).unwrap()["provenance"].is_null());
+    assert!(!serde_json::to_string(&partner.registry())
+        .unwrap()
+        .contains("PRIVATE pre-sharing"));
+    assert!(partner
+        .device
+        .db
+        .lock()
+        .unwrap()
+        .all("tag")
+        .unwrap()
+        .iter()
+        .all(|t| t["id"] != private));
+    partner.hint(&desktop);
+    desktop.hint(&partner);
+    partner.hint(&owner);
+    owner.hint(&partner);
+    partner.wake();
+    until(|| {
+        desktop.registry().bindings.contains_key(&scope)
+            && desktop.device.get(&partner_item).is_some()
+    });
+    assert_eq!(desktop.registry().bindings[&scope].tag_id, partner_tag);
+    let own_private = partner.tag("Movies");
+    assert_ne!(own_private, partner_tag);
+    {
+        let mut db = partner.device.db.lock().unwrap();
+        let draft = json!({"profileKey":"app:general","entryId":store::id(),"text":"Watch #Movies","tagIds":[],"attachments":[],"location":null});
+        db.put_local("draft", "app:general", &draft).unwrap();
+        assert!(db.command("commitDraft", &json!({"draft":draft})).is_err());
+        assert_eq!(
+            db.get("draft", "app:general").unwrap().unwrap()["text"],
+            "Watch #Movies"
+        );
+        let mut selected = draft;
+        selected["tagIds"] = json!([own_private]);
+        db.command("commitDraft", &json!({"draft":selected}))
+            .unwrap();
+    }
+    {
+        let mut db = desktop.device.db.lock().unwrap();
+        let mut e = db.get("thought", &partner_item).unwrap().unwrap();
+        e["text"] = json!("Dune #Private");
+        e["completed"] = json!(true);
+        e["starred"] = json!(true);
+        db.record("thought", &partner_item, e, false).unwrap();
+    }
+    desktop.wake();
+    until(|| {
+        owner
+            .device
+            .get(&item)
+            .is_some_and(|e| e["text"] == "Dune #Private" && e["completed"] == true)
+    });
+    assert_eq!(
+        owner.device.get(&item).unwrap()["tagIds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect::<std::collections::BTreeSet<_>>(),
+        [tag.clone(), private.clone()].into_iter().collect()
+    );
+    until(|| {
+        partner
+            .device
+            .get(&partner_item)
+            .is_some_and(|e| e["text"] == "Dune #Private" && e["starred"] == true)
+    });
+    assert_eq!(owner.device.get(&item).unwrap()["starred"], true);
+    let removable = partner.device.append("Detach and re-add");
+    {
+        let mut db = partner.device.db.lock().unwrap();
+        let mut value = db.get("thought", &removable).unwrap().unwrap();
+        value["tagIds"] = json!([partner_tag]);
+        db.record("thought", &removable, value, false).unwrap();
+    }
+    partner
+        .sharing
+        .command("getTagShareState", json!({"tagId":partner_tag}))
+        .unwrap();
+    {
+        let mut db = partner.device.db.lock().unwrap();
+        let mut value = db.get("thought", &removable).unwrap().unwrap();
+        value["tagIds"] = json!([]);
+        db.record("thought", &removable, value, false).unwrap();
+        assert!(db.get("thought", &removable).unwrap().is_none());
+        let mut copy = db
+            .all("thought")
+            .unwrap()
+            .into_iter()
+            .find(|e| e["text"] == "Detach and re-add")
+            .unwrap();
+        let copy_id = copy["id"].as_str().unwrap().to_owned();
+        assert_ne!(copy_id, removable);
+        copy["tagIds"] = json!([partner_tag]);
+        db.record("thought", &copy_id, copy, false).unwrap();
+    }
+    partner
+        .sharing
+        .command("getTagShareState", json!({"tagId":partner_tag}))
+        .unwrap();
+    assert!(
+        partner.registry().scopes[&scope]
+            .heads()
+            .unwrap()
+            .get(&format!("thought:{removable}"))
+            .unwrap()
+            .revision
+            .deleted
+    );
+    let other = owner.tag("Other list");
+    owner
+        .sharing
+        .command("startTagSharing", json!({"tagId":other}))
+        .unwrap();
+    let mut draft = thought(&store::id(), "Two scopes");
+    draft["tagIds"] = json!([tag, other]);
+    let id = draft["id"].as_str().unwrap().to_owned();
+    assert!(owner
+        .device
+        .db
+        .lock()
+        .unwrap()
+        .record("thought", &id, draft, false)
+        .is_err());
+    let mut snapshot = {
+        let db = partner.device.db.lock().unwrap();
+        json!({"tags":db.all("tag").unwrap(),"entries":db.all("thought").unwrap(),"recovery":[]})
+    };
+    partner
+        .device
+        .db
+        .lock()
+        .unwrap()
+        .private_sharing_snapshot(&mut snapshot)
+        .unwrap();
+    assert!(snapshot["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|t| t["id"] != partner_tag));
+    assert!(snapshot["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e["id"] != partner_item));
+    owner.sharing.command("removeTagShareMember",json!({"tagId":tag,"memberId":owner.sharing.command("getTagShareState",json!({"tagId":tag})).unwrap()["members"].as_array().unwrap().iter().find(|m|m["owner"]==false).unwrap()["id"]})).unwrap();
+    owner.wake();
+    partner.wake();
+    until(|| partner.registry().bindings[&scope].detached);
+    until(|| desktop.registry().bindings[&scope].detached);
+    assert!(partner.device.get(&partner_item).is_none());
+    assert!(partner
+        .device
+        .db
+        .lock()
+        .unwrap()
+        .all("thought")
+        .unwrap()
+        .iter()
+        .any(|e| e["text"] == "Dune #Private" && e["id"] != partner_item));
+}
+
+#[test]
+fn shared_originals_restart_and_personal_device_revocation_preserve_membership_fences() {
+    let owner = SharedDevice::new();
+    let member = SharedDevice::new();
+    let linked = SharedDevice::new();
+    pair(&member.device, &linked.device);
+    let tag = owner.tag("Movies");
+    let item = owner.device.append("Movie poster");
+    let media = store::id();
+    let original = vec![17u8; 97000];
+    let metadata = json!({"id":media,"kind":"image","mimeType":"image/png","filename":"poster.png","byteSize":original.len(),"width":1,"height":1,"duration":null,"checksum":wire::hash(&original)});
+    {
+        let mut db = owner.device.db.lock().unwrap();
+        std::fs::write(db.root.join("media").join(&media), &original).unwrap();
+        db.put_local("media", &media, &metadata).unwrap();
+        let mut value = db.get("thought", &item).unwrap().unwrap();
+        value["attachments"] = json!([metadata]);
+        value["tagIds"] = json!([tag]);
+        value["location"] = json!({"latitude":37.2,"longitude":-122.1,"accuracy":10,"capturedAt":1,"token":store::id(),"userLabel":"Cinema"});
+        db.record("thought", &item, value, false).unwrap();
+    }
+    let scope = owner
+        .sharing
+        .command("startTagSharing", json!({"tagId":tag}))
+        .unwrap()["collectionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let invitation = owner
+        .sharing
+        .command("createTagInvite", json!({"tagId":tag}))
+        .unwrap();
+    let joined = member
+        .sharing
+        .command("joinTagShare", json!({"invite":invitation["invite"]}))
+        .unwrap();
+    let local_item = member.registry().bindings[&scope].entries[&item].clone();
+    until(|| {
+        member
+            .device
+            .db
+            .lock()
+            .unwrap()
+            .root
+            .join("media")
+            .join(&media)
+            .is_file()
+    });
+    assert_eq!(
+        std::fs::read(
+            member
+                .device
+                .db
+                .lock()
+                .unwrap()
+                .root
+                .join("media")
+                .join(&media)
+        )
+        .unwrap(),
+        original
+    );
+    assert_eq!(
+        member.device.get(&local_item).unwrap()["location"]["userLabel"],
+        "Cinema"
+    );
+    member.hint(&linked);
+    linked.hint(&member);
+    member.wake();
+    until(|| {
+        linked.registry().bindings.contains_key(&scope) && linked.device.get(&local_item).is_some()
+    });
+    let stale = linked.registry().scopes[&scope]
+        .proofs
+        .values()
+        .find(|p| p["group"] == member.device.state()["groupId"])
+        .unwrap()
+        .clone();
+    let removed = linked.device.state()["deviceId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    linked.sharing.stop();
+    linked.device.sync.stop();
+    let db = linked.device.db.clone();
+    let resumed_device = Device::from_db(db);
+    let resumed_sharing = museamo_sync_core::sharing::ShareService::new(
+        resumed_device.platform.clone(),
+        resumed_device.sync.clone(),
+    )
+    .unwrap();
+    resumed_sharing.start("127.0.0.1:0").unwrap();
+    let resumed = SharedDevice {
+        device: resumed_device,
+        sharing: resumed_sharing,
+    };
+    assert_eq!(
+        resumed.registry().bindings[&scope].entries[&item],
+        local_item
+    );
+    assert_eq!(
+        resumed
+            .device
+            .db
+            .lock()
+            .unwrap()
+            .all("thought")
+            .unwrap()
+            .iter()
+            .filter(|e| e["id"] == local_item)
+            .count(),
+        1
+    );
+    member
+        .device
+        .sync
+        .command("removeDevice", json!({"deviceId":removed}))
+        .unwrap();
+    member
+        .sharing
+        .command("getTagShareState", json!({"tagId":joined["tagId"]}))
+        .unwrap();
+    let person = member.device.state()["groupId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let revoked = member.registry().scopes[&scope].proofs[&person].clone();
+    let merged = museamo_sync_core::sharing::merge_proof(&revoked, &stale).unwrap();
+    assert!(!museamo_sync_core::sharing::device_active(&merged, &Value::Null, &removed).unwrap());
+    resumed.sharing.stop();
+    resumed.device.sync.stop();
+    let mut registry = resumed.registry();
+    registry
+        .scopes
+        .get_mut(&scope)
+        .unwrap()
+        .proofs
+        .insert(person.clone(), merged);
+    let projection = museamo_sync_core::sharing::projections(&registry).unwrap();
+    resumed
+        .device
+        .platform
+        .call(
+            "shareCommit",
+            json!({"registry":registry,"participant":person,"ack":[],"projections":projection}),
+        )
+        .unwrap();
+    let mut value = resumed.device.get(&local_item).unwrap();
+    value["text"] = json!("Removed device edit");
+    assert!(resumed
+        .device
+        .db
+        .lock()
+        .unwrap()
+        .record("thought", &local_item, value, false)
+        .is_err());
+    assert_eq!(
+        resumed.device.get(&local_item).unwrap()["text"],
+        "Movie poster"
+    );
+}

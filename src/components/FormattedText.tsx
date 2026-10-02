@@ -5,6 +5,7 @@ import { bridge, isNative, type Tag } from "../data";
 import { hashtags } from "../hashtags";
 import { webLinks } from "../links";
 import { safeWebUrl } from "../formatting";
+import { ChecklistMark, SharedMark } from "./Sharing";
 
 export function FormattedText({
   text,
@@ -71,6 +72,7 @@ export function FormattedText({
               onClick={() => openTag(tag.id)}
             >
               {label}
+              {tag.sharing && tag.type === "checklist" && <ChecklistMark />}{tag.sharing && <SharedMark />}
             </button>
           ) : (
             label

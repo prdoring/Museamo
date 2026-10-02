@@ -20,7 +20,7 @@ object Backup {
                         if (row.kind == "thought") payload.put("tagIds", JSONArray(TagAliases.map(repo.rawDao, ids(payload.getJSONArray("tagIds").toString()))))
                         JSONObject().put("id", row.id).put("kind", row.kind).put("entityId", row.entityId).put("createdAt", row.createdAt).put("payload", payload)
                     }))
-                }.toString(2)
+                }.let { ShareStorage.privateSnapshot(repo.rawDao, it) }.toString(2)
         }
         return output
     }
@@ -88,7 +88,7 @@ object Backup {
         repo.db.runInTransaction {
             val tagMap = mutableMapOf<String, String>()
             tags.forEach { incoming ->
-                val sameName = repo.dao.tags().find { it.normalizedName == incoming.normalizedName && it.type == incoming.type }
+                val sameName = repo.dao.tags().find { !ShareStorage.isShared(repo.rawDao, it.id) && it.normalizedName == incoming.normalizedName && it.type == incoming.type }
                 val existing = repo.dao.tag(incoming.id)
                 val target = sameName ?: incoming.copy(id = if (existing == null) incoming.id else uid()).also { repo.dao.putTag(it) }
                 tagMap[incoming.id] = target.id
@@ -109,7 +109,7 @@ object Backup {
             entries.forEach { incoming ->
                 val mapped = incoming.copy(tagIds = jsonIds(ids(incoming.tagIds).map { tagMap.getValue(it) }), profileId = incoming.profileId?.let { profileMap.getValue(it) })
                 val existing = repo.dao.entry(mapped.id)
-                val target = if (existing == null) { if (repo.dao.retired("thought", mapped.id) == null) mapped else mapped.copy(id = uid()) } else if (existing != mapped && repo.dao.entries().none { it.copy(id = mapped.id) == mapped }) mapped.copy(id = uid()) else null
+                val target = if (ShareStorage.reservedId(repo.rawDao, mapped.id)) mapped.copy(id = uid()) else if (existing == null) { if (repo.dao.retired("thought", mapped.id) == null) mapped else mapped.copy(id = uid()) } else if (existing != mapped && repo.dao.entries().none { it.copy(id = mapped.id) == mapped }) mapped.copy(id = uid()) else null
                 if (target != null) {
                     entryObjects.first { it.getString("id") == incoming.id }.optJSONObject("provenance")?.let { repo.rawDao.putSyncMetadata(SyncMetadataRow("provenance:thought:${target.id}", it.toString())) }
                     repo.dao.insertEntry(target)
@@ -117,7 +117,7 @@ object Backup {
             }
             recovery.forEach { incoming ->
                 val payload = JSONObject(incoming.payload)
-                val originalId = if (incoming.kind == "thought" && repo.rawDao.retired("thought", incoming.entityId) != null) uid().also { payload.put("id", it) } else incoming.entityId
+                val originalId = if (ShareStorage.reservedId(repo.rawDao, incoming.entityId) || incoming.kind == "thought" && repo.rawDao.retired("thought", incoming.entityId) != null) uid().also { payload.put("id", it) } else incoming.entityId
                 if (incoming.kind == "thought") {
                     payload.put("tagIds", JSONArray(ids(payload.getJSONArray("tagIds").toString()).map { tagMap[it] ?: it }))
                     payload.put("profileId", JSONObject.NULL)

@@ -2,6 +2,8 @@ import { Presence, PageMotion, Disclosure, MotionList } from "./components/Motio
 import { DesktopLayout, WindowControls } from "./components/Desktop";
 import { captureReadingAnchor, restoreReadingAnchor, type FeedUpdate } from "./feedMotion";
 import { PaperIcon } from "./components/PaperIcon";
+import { ChecklistMark, SharedMark } from "./components/Sharing";
+import { Brand } from "./components/Brand";
 import { useEffect, useRef, useState } from "react";
 import {
   ListChecks,
@@ -418,7 +420,7 @@ export default function App() {
           </div>
         )}
         <header className="toolbar">
-          {desktopLayout && <span className="desktop-brand" data-tauri-drag-region>museamo</span>}
+          {desktopLayout && <span className="desktop-brand" data-tauri-drag-region><Brand /></span>}
           <div className="toolbar-title">
             {(view.tagId || view.settings) && (
               <button
@@ -441,7 +443,8 @@ export default function App() {
                     ? "Gems"
                     : view.tab === "tags"
                       ? "Tags"
-                      : desktopLayout ? "Stream" : "museamo"}
+                      : desktopLayout ? "Stream" : <Brand />}
+              {tag?.sharing && tag.type === "checklist" && <ChecklistMark />}{tag?.sharing && <SharedMark />}
             </h1>
           </div>
           {desktopLayout && <div className="header-drag-space" data-tauri-drag-region />}
@@ -533,6 +536,7 @@ export default function App() {
               query={view.query}
               open={openTag}
               edit={setTagEditor}
+              changed={async () => { cache.current.clear(); await load(false, true); }}
             />
           ) : (
             <Feed

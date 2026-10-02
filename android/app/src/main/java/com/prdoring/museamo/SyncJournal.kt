@@ -18,24 +18,29 @@ data class RetiredRow(val kind: String, val id: String)
 
 /** Recorder wraps every DAO saved-data write, including imports and asynchronous enrichment. */
 class RecordingDao(private val db: MuseamoDatabase, private val delegate: StoreDao) : StoreDao by delegate {
+    override fun tags(): List<TagRow> = delegate.tags().onEach { it.shared = ShareStorage.isShared(delegate, it.id) }.also { values -> values.forEach { t -> t.ambiguous = values.any { it.id != t.id && it.normalizedName == t.normalizedName } } }
+    override fun tag(id: String): TagRow? = tags().find { it.id == id }
     override fun insertEntry(row: EntryRow): Long {
         var result = -1L
         db.runInTransaction {
             require(delegate.retired("thought", row.id) == null) { "This thought was permanently cleared. Save it as a new thought." }
             result = delegate.insertEntry(row)
-            if (result != -1L) SyncJournal.record(delegate, "thought", row.id, payload(row), false)
+            if (result != -1L) { ShareStorage.recordThought(delegate, null, row); SyncJournal.record(delegate, "thought", row.id, payload(row), false) }
         }
         return result
     }
     override fun updateEntry(row: EntryRow) = db.runInTransaction {
         val old = delegate.entry(row.id) ?: return@runInTransaction
         if (old == row) return@runInTransaction
+        val detached = ShareStorage.removesSharedTag(delegate, old, row)
+        ShareStorage.recordThought(delegate, old, row)
         recover("thought", row.id, payload(old))
-        delegate.updateEntry(row)
-        SyncJournal.record(delegate, "thought", row.id, payload(row), false)
+        if (detached) delegate.deleteEntry(row.id) else delegate.updateEntry(row)
+        SyncJournal.record(delegate, "thought", row.id, payload(row), detached)
     }
     override fun deleteEntry(id: String) = db.runInTransaction {
         val old = delegate.entry(id) ?: return@runInTransaction
+        ShareStorage.recordThought(delegate, old, old, deleted = true)
         recover("thought", id, payload(old))
         delegate.deleteEntry(id)
         SyncJournal.record(delegate, "thought", id, payload(old), true)
@@ -43,12 +48,14 @@ class RecordingDao(private val db: MuseamoDatabase, private val delegate: StoreD
     override fun putTag(row: TagRow) = db.runInTransaction {
         val old = delegate.tag(row.id)
         if (old == row) return@runInTransaction
+        ShareStorage.recordTag(delegate, old, row)
         old?.let { recover("tag", row.id, it.json()) }
         delegate.putTag(row)
         SyncJournal.record(delegate, "tag", row.id, row.json(), false)
     }
     override fun deleteTag(id: String) = db.runInTransaction {
         val old = delegate.tag(id) ?: return@runInTransaction
+        require(!ShareStorage.isShared(delegate, id)) { "Use sharing settings to leave or stop sharing this hashtag." }
         recover("tag", id, old.json())
         delegate.deleteTag(id)
         SyncJournal.record(delegate, "tag", id, old.json(), true)

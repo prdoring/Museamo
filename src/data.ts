@@ -8,6 +8,7 @@ import { type LocationLabelParts } from "./locationLabels";
 import { platform } from "./platform";
 import { desktopBridge } from "./desktop";
 import type { CompanionBridge } from "./sync";
+import type { ShareBridge, TagSharing } from "./sharing";
 export { locationLabel } from "./locationLabels";
 export type LocationStatus = "available" | "services-off" | "permission-denied" | "disabled" | "timeout" | "cancelled" | "unavailable";
 export function locationStatusMessage(status: LocationStatus) {
@@ -29,6 +30,7 @@ export interface PostLocation extends LocationLabelParts {
   token: string;
 }
 export interface Tag {
+  sharing?: TagSharing;
   id: string;
   name: string;
   normalizedName?: string;
@@ -42,7 +44,8 @@ export function tagDisplayName(tag: Tag, tags: Tag[]): string {
   const collisions = tags.filter(other => (other.normalizedName ?? normalize(other.name)) === normalized);
   if (collisions.length < 2) return tag.name;
   const type = tag.type === "checklist" ? "Checklist" : "Standard";
-  return `${tag.name} · ${type}${collisions.filter(other => other.type === tag.type).length > 1 ? ` · ${tag.id.slice(0, 8)}` : ""}`;
+  const sharing = collisions.some(t => t.sharing) ? ` · ${tag.sharing ? "Shared" : "Private"}` : "";
+  return `${tag.name} · ${type}${sharing}${collisions.filter(other => other.type === tag.type && !!other.sharing === !!tag.sharing).length > 1 ? ` · ${tag.id.slice(0, 8)}` : ""}`;
 }
 export interface Entry {
   revision?: string;
@@ -95,7 +98,7 @@ export interface ComposeResult {
   cancelled: boolean;
   entryId?: string;
 }
-export interface MuseamoBridge extends CompanionBridge {
+export interface MuseamoBridge extends CompanionBridge, ShareBridge {
   commitDraft(input: { draft: Draft }): Promise<{ entryId: string }>;
   openLocation(input: { latitude: number; longitude: number }): Promise<void>;
   locationSettings(): Promise<{ enabled: boolean; permitted: boolean }>;
@@ -278,19 +281,24 @@ function assigned(text: string, explicit: string[], previous?: Entry) {
         ),
     )
     .map(({ name }) => {
-      let tag = tags.find((t) => t.name.toLowerCase() === name.toLowerCase());
+      const matches = tags.filter(t => t.name.toLowerCase() === name.toLowerCase());
+      const chosen = matches.filter(t => explicit.includes(t.id) || previous?.tagIds.includes(t.id));
+      if (matches.length > 1 && chosen.length !== 1) throw new Error(`Several hashtags are named ${name}. Choose the intended hashtag explicitly.`);
+      let tag = chosen[0] ?? matches[0];
       if (!tag) {
         tag = { id: crypto.randomUUID(), name, type: "standard" };
         tags.push(tag);
       }
       return tag.id;
     });
-  return [
+  const result = [
     ...new Set([
       ...explicit.filter((id) => tags.some((t) => t.id === id)),
       ...inline,
     ]),
   ];
+  if (tags.filter(t => t.sharing && result.includes(t.id)).length > 1) throw new Error("A thought can belong to only one shared hashtag. Your draft is kept.");
+  return result;
 }
 export const preview = {
   reset(empty = false) {
@@ -352,6 +360,17 @@ const resolveAttachments = (ids: string[]) => {
 };
 let previewLocationEnabled = true;
 const browser: MuseamoBridge = {
+  async getTagShareState({ tagId }) { const tag = tags.find(t => t.id === tagId); return tag?.sharing ? { ...tag.sharing, members: [{ id: "preview-owner", name: "Your preview", owner: true, you: true }] } : { collectionId: null }; },
+  async startTagSharing({ tagId }) { mutation(); const tag = tags.find(t => t.id === tagId); if (!tag) throw new Error("Tag no longer exists."); if (entries.some(e => e.tagIds.includes(tagId) && tags.some(t => t.sharing && e.tagIds.includes(t.id)))) throw new Error("Some thoughts already belong to another shared list."); const collectionId = crypto.randomUUID(); tag.sharing = { collectionId, role: "owner", status: "waiting" }; changed(); return { collectionId }; },
+  async createTagInvite() { throw new Error("QR invitations are available in the installed Android app. This preview is temporary."); },
+  async cancelTagInvite() {},
+  async scanTagInvite() { throw new Error("Scan shared hashtags in the installed Android app."); },
+  async previewTagInvite() { throw new Error("Join shared hashtags in the installed Android app."); },
+  async joinTagShare() { throw new Error("Join shared hashtags in the installed Android app."); },
+  async removeTagShareMember() { throw new Error("Manage members in the installed Android app."); },
+  async leaveTagShare({ tagId }) { const tag = tags.find(t => t.id === tagId); if (tag) delete tag.sharing; changed(); },
+  async stopTagSharing({ tagId }) { return browser.leaveTagShare({ tagId }); },
+  async syncTagShare() { throw new Error("Local-network sync is available in the installed app."); },
   async getSyncState() { return { enabled: false, phase: "idle", devices: [], nearby: [] }; },
   async listDevices() { return { devices: [], nearby: [] }; },
   async linkDevice() { throw new Error("Link devices from the installed Android or Windows app."); },
@@ -514,7 +533,7 @@ const browser: MuseamoBridge = {
     if (!name || name.length > 80) throw new Error("Use 1–80 characters.");
     if (
       tags.some(
-        (t) => t.id !== id && t.name.toLowerCase() === name.toLowerCase(),
+        (t) => !t.sharing && t.id !== id && t.name.toLowerCase() === name.toLowerCase(),
       )
     )
       throw new Error("This tag already exists.");

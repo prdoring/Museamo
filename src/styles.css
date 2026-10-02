@@ -909,6 +909,16 @@ summary {
 .sync-confirm { padding: 16px; margin: 16px 0; border: 1px solid var(--line); border-radius: 8px; }
 .sync-confirm h3, .nearby-devices h3 { margin-top: 0; }
 .pairing-code { display: block; font: 600 20px/1.8 monospace; letter-spacing: 1px; overflow-wrap: anywhere; margin: 16px 0; }
+.shared-mark { display: inline-flex; align-items: center; vertical-align: middle; margin-left: 6px; color: var(--muted); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sharing-settings { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.sharing-setting { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; text-align: left; }
+.sharing-setting strong, .sharing-setting small { display: block; }
+.sharing-setting small { color: var(--muted); margin-top: 4px; }
+.sharing-heading { display: flex; align-items: center; gap: 8px; }
+.sharing-settings .secondary { display: inline-flex; gap: 8px; align-items: center; margin: 8px 8px 8px 0; }
+.share-invitation { margin-top: 12px; text-align: center; }
+.share-invitation img { width: min(100%, 320px); aspect-ratio: 1; height: auto; background: white; padding: 8px; border-radius: 8px; }
 .manual-link { margin: 20px 0; }
 .manual-link summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
 .manual-link label { display: grid; gap: 8px; margin: 12px 0; }

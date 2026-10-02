@@ -49,6 +49,7 @@ impl crate::Platform for AndroidPlatform {
     }
 }
 static COORDINATOR: OnceLock<Mutex<Option<Arc<crate::Coordinator>>>> = OnceLock::new();
+static SHARING: OnceLock<Mutex<Option<Arc<crate::sharing::ShareService>>>> = OnceLock::new();
 fn response(env: &mut JNIEnv, result: Result<Value, String>) -> jstring {
     let output = match result {
         Ok(value) => json!({"ok":true,"result":value}),
@@ -77,11 +78,13 @@ pub extern "system" fn Java_com_prdoring_museamo_SyncCore_startCoordinator(
                 .get_or_init(|| Mutex::new(None))
                 .lock()
                 .map_err(|_| "Coordinator unavailable")?;
-            if let Some(previous) = slot.take() {
-                previous.stop();
-            }
-            let coordinator = crate::Coordinator::new(platform)?;
-            let state = coordinator.start(&bind)?;
+            if let Some(previous) = SHARING.get_or_init(||Mutex::new(None)).lock().map_err(|_|"Sharing unavailable")?.take() { previous.stop(); }
+            if let Some(previous) = slot.take() { previous.stop(); }
+            let coordinator = crate::Coordinator::new(platform.clone())?;
+            let mut state = coordinator.start(&bind)?;
+            let sharing = match crate::sharing::ShareService::new(platform,coordinator.clone()) { Ok(sharing)=>sharing,Err(error)=>{coordinator.stop();return Err(error);} };
+            state["sharing"] = match sharing.start(&bind) {Ok(state)=>state,Err(error)=>{sharing.stop();coordinator.stop();return Err(error);}};
+            *SHARING.get_or_init(||Mutex::new(None)).lock().map_err(|_|"Sharing unavailable")? = Some(sharing);
             *slot = Some(coordinator);
             Ok(state)
         }))
@@ -107,7 +110,15 @@ pub extern "system" fn Java_com_prdoring_museamo_SyncCore_coordinatorCommand(
                 .as_ref()
                 .cloned()
                 .ok_or("Sync is not running")?;
-            coordinator.command(&method, crate::json::parse(input.as_bytes())?)
+            let sharing=SHARING.get_or_init(||Mutex::new(None)).lock().map_err(|_|"Sharing unavailable")?.as_ref().cloned();
+            let input=crate::json::parse(input.as_bytes())?;
+            if matches!(method.as_str(),"getSharingState"|"shareDiscoveryHint"|"getTagShareState"|"startTagSharing"|"createTagInvite"|"cancelTagInvite"|"previewTagInvite"|"joinTagShare"|"leaveTagShare"|"stopTagSharing"|"removeTagShareMember"|"syncTagShare") { return sharing.ok_or("Sharing is not running")?.command(&method,input); }
+            let mut result=coordinator.command(&method,input)?;
+            if let Some(sharing)=sharing {
+                if matches!(method.as_str(),"localDataChanged"|"syncNow"|"removeDevice"|"acceptEnrollment"){sharing.local_data_changed();}
+                if method=="getSyncState"{result["sharing"]=sharing.command("getSharingState",json!({}))?;}
+            }
+            Ok(result)
         }))
         .unwrap_or_else(|_| Err("Native coordinator failed safely".into()));
     response(&mut env, result)
@@ -119,6 +130,7 @@ pub extern "system" fn Java_com_prdoring_museamo_SyncCore_stopCoordinator(
     _class: JClass,
 ) -> jstring {
     let result = (|| -> Result<Value, String> {
+        if let Some(sharing)=SHARING.get_or_init(||Mutex::new(None)).lock().map_err(|_|"Sharing unavailable")?.take(){sharing.stop();}
         if let Some(coordinator) = COORDINATOR
             .get_or_init(|| Mutex::new(None))
             .lock()

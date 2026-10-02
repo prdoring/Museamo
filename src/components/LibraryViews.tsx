@@ -7,16 +7,19 @@ import {
 } from "lucide-react";
 import type { Tag } from "../data";
 import { tagDisplayName } from "../data";
+import { JoinSharedTag, SharedMark } from "./Sharing";
 export function TagList({
   tags,
   query,
   open,
   edit,
+  changed = async () => {},
 }: {
   tags: Tag[];
   query: string;
   open: (id: string) => void;
   edit: (tag: Tag | "new") => void;
+  changed?: () => Promise<void>;
 }) {
   const filtered = tags.filter((t) =>
     t.name.toLowerCase().includes(query.toLowerCase()),
@@ -27,11 +30,12 @@ export function TagList({
         <PaperIcon name="plus" size={20} />
         New tag
       </button>
+      <JoinSharedTag joined={changed} />
       {filtered.map((t) => (
         <div className="tag-row" key={t.id}>
           <button onClick={() => open(t.id)}>
             {t.type === "checklist" ? <ListChecks size={19} aria-hidden="true" /> : <Hash size={19} aria-hidden="true" />}
-            <span>{tagDisplayName(t, tags)}{t.type === "checklist" && <small className="category-type">Checklist</small>}</span>
+            <span>{tagDisplayName(t, tags)}{t.type === "checklist" && <small className="category-type">Checklist</small>}{t.sharing && <SharedMark />}</span>
             <small>{t.count || 0}</small>
             <PaperIcon name="next" size={18} />
           </button>

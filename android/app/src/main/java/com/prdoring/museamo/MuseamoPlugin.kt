@@ -11,6 +11,7 @@ import com.getcapacitor.*
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONArray
+import org.json.JSONObject
 
 @CapacitorPlugin(name = "Museamo", permissions = [com.getcapacitor.annotation.Permission(alias = "location", strings = [android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.ACCESS_FINE_LOCATION])])
 class MuseamoPlugin : Plugin() {
@@ -76,6 +77,36 @@ class MuseamoPlugin : Plugin() {
     @PluginMethod fun cancelPairing(call: PluginCall) = syncTask(call, "cancelPairing")
     @PluginMethod fun syncNow(call: PluginCall) = syncTask(call, "syncNow")
     @PluginMethod fun removeDevice(call: PluginCall) = syncTask(call, "removeDevice")
+    @PluginMethod fun getTagShareState(call: PluginCall) = syncTask(call, "getTagShareState")
+    @PluginMethod fun startTagSharing(call: PluginCall) = syncTask(call, "startTagSharing")
+    @PluginMethod fun createTagInvite(call: PluginCall) {
+        SyncRuntime.executor.execute {
+            try {
+                val result = SyncRuntime.command(context, "createTagInvite", call.data)
+                val bitmap = com.journeyapps.barcodescanner.BarcodeEncoder().encodeBitmap(result.getString("invite"), com.google.zxing.BarcodeFormat.QR_CODE, 720, 720)
+                val output = java.io.ByteArrayOutputStream(); bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output); bitmap.recycle()
+                result.put("imageDataUrl", "data:image/png;base64," + android.util.Base64.encodeToString(output.toByteArray(), android.util.Base64.NO_WRAP))
+                call.resolve(JSObject(result.toString()))
+            } catch (error: Exception) { call.reject(error.message ?: "Could not create invitation.", error) }
+        }
+    }
+    @PluginMethod fun cancelTagInvite(call: PluginCall) = syncTask(call, "cancelTagInvite")
+    @PluginMethod fun previewTagInvite(call: PluginCall) = syncTask(call, "previewTagInvite")
+    @PluginMethod fun joinTagShare(call: PluginCall) = syncTask(call, "joinTagShare")
+    @PluginMethod fun leaveTagShare(call: PluginCall) = syncTask(call, "leaveTagShare")
+    @PluginMethod fun stopTagSharing(call: PluginCall) = syncTask(call, "stopTagSharing")
+    @PluginMethod fun removeTagShareMember(call: PluginCall) = syncTask(call, "removeTagShareMember")
+    @PluginMethod fun syncTagShare(call: PluginCall) = syncTask(call, "syncTagShare")
+    @PluginMethod fun scanTagInvite(call: PluginCall) {
+        val options = com.journeyapps.barcodescanner.ScanOptions().setDesiredBarcodeFormats(com.journeyapps.barcodescanner.ScanOptions.QR_CODE).setCaptureActivity(ShareScannerActivity::class.java).setPrompt("Scan the shared hashtag QR code").setBeepEnabled(false).setOrientationLocked(true)
+        startActivityForResult(call, options.createScanIntent(context), "shareScanResult")
+    }
+    @ActivityCallback private fun shareScanResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) return
+        if (result.data?.getBooleanExtra("MISSING_CAMERA_PERMISSION", false) == true) { call.reject("Camera permission is needed to scan a sharing QR code. You can enable it in Android settings."); return }
+        val scan = com.journeyapps.barcodescanner.ScanIntentResult.parseActivityResult(result.resultCode, result.data)
+        call.resolve(JSObject().put("cancelled", scan.contents == null).put("invite", scan.contents ?: JSONObject.NULL))
+    }
     @PluginMethod fun listRecovery(call: PluginCall) = task(call) { repo -> JSObject().put("items", JSONArray(repo.rawDao.recovery().map { item -> org.json.JSONObject().put("id", item.id).put("kind", item.kind).put("entityId", item.entityId).put("payload", org.json.JSONObject(item.payload)).put("createdAt", item.createdAt) })) }
     @PluginMethod fun restoreRecovery(call: PluginCall) = task(call, true) { repo ->
         val item = requireNotNull(repo.rawDao.recoveryItem(requireNotNull(call.getString("id")))) { "Recovery item no longer exists" }
@@ -156,7 +187,7 @@ class MuseamoPlugin : Plugin() {
         JSObject().put("entries", JSONArray(rows.take(limit).map { repo.entryJson(it) })).put("hasMore", rows.size > limit)
     }
     @PluginMethod fun getEntry(call: PluginCall) = task(call) { repo -> JSObject().put("entry", repo.dao.entry(requireNotNull(call.getString("id")))?.let { repo.entryJson(it) } ?: org.json.JSONObject.NULL) }
-    @PluginMethod fun library(call: PluginCall) = task(call) { repo -> JSObject().put("tags", JSONArray(repo.dao.tags().map { it.json().put("normalizedName", normalizeTag(it.name)).put("count", repo.dao.tagCount("\"${it.id}\"")) })).put("profiles", JSONArray(repo.dao.profiles().map { it.json() })) }
+    @PluginMethod fun library(call: PluginCall) = task(call) { repo -> JSObject().put("tags", JSONArray(repo.dao.tags().map { ShareStorage.tagJson(repo.rawDao, it).put("normalizedName", normalizeTag(it.name)).put("count", repo.dao.tagCount("\"${it.id}\"")) })).put("profiles", JSONArray(repo.dao.profiles().map { it.json() })) }
     @PluginMethod fun updateEntry(call: PluginCall) = task(call, true) { repo ->
         val base = call.getString("baseRevision")
         repo.requireThoughtRevision(requireNotNull(call.getString("id")), base)

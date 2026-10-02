@@ -3,7 +3,7 @@ html[data-layout="desktop"] { --desktop-rail: 224px; scrollbar-gutter: stable; }
 html[data-layout="desktop"] body { background: var(--surface); }
 .app-shell.desktop-shell { max-width: none; margin: 0; padding: 52px 0 0 var(--desktop-rail); min-height: 100dvh; border: 0; }
 .desktop-shell .toolbar { position: fixed; top: 0; left: 0; right: 138px; height: 52px; z-index: 10; padding: 0 8px 0 0; gap: 8px; border-bottom: 1px solid var(--line); background: var(--bg); }
-.desktop-brand { display: flex; align-items: center; width: var(--desktop-rail); height: 52px; flex-shrink: 0; padding: 0 24px; font: 22px var(--font-heading); letter-spacing: .035em; user-select: none; }
+.desktop-brand { display: flex; align-items: center; width: var(--desktop-rail); height: 52px; flex-shrink: 0; padding: 0 24px; background: var(--nav); color: var(--nav-text); user-select: none; }
 .desktop-shell .toolbar-title { flex-shrink: 1; padding-left: 24px; }
 .desktop-shell .toolbar h1 { font: 600 20px "DM Sans", sans-serif; letter-spacing: -.025em; text-transform: none; }
 .header-drag-space { flex: 1; align-self: stretch; min-width: 12px; }
@@ -47,8 +47,7 @@ html[data-layout="desktop"] .photo-lightbox { top: 52px; height: calc(var(--view
 .action-menu .post-details { padding: 8px 12px; }
 @media (max-width: 899px) {
   html[data-layout="desktop"] { --desktop-rail: 72px; }
-  .desktop-brand { padding: 0; justify-content: center; font-size: 0; }
-  .desktop-brand::after { content: "M"; font: 26px var(--font-heading); }
+  .desktop-brand { padding: 0; justify-content: center; }
   .desktop-shell .bottom-dock { padding: 16px 12px; }
   .desktop-shell .bottom-dock nav button, .desktop-settings, .desktop-shell .capture-bar { justify-content: center; padding: 12px 0; width: 48px; }
   .desktop-shell .bottom-dock nav button span, .desktop-settings span, .desktop-shell .capture-bar > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

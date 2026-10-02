@@ -31,8 +31,11 @@ fn bytes(request: &Value, key: &str) -> Result<Vec<u8>, String> {
 
 /// Internal native/JNI request interface. Never register this general API as a WebView command.
 pub fn evaluate(request: &Value) -> Result<Value, String> {
+    if request["action"] == "sharingProjections" { let registry:crate::sharing::Registry=serde_json::from_value(request["registry"].clone()).map_err(|_|"Invalid sharing registry")?; return crate::sharing::projections(&registry); }
     let action = request["action"].as_str().ok_or("Missing core action")?;
     match action {
+        "sharingDeviceActive" => return Ok(json!({"active":crate::sharing::device_active(&request["proof"],&request["personal"],request["device"].as_str().ok_or("Invalid device")?)?})),
+        "sharingLocalId" => return Ok(json!({"id":crate::sharing::local_id(request["scope"].as_str().ok_or("Invalid shared scope")?,request["participant"].as_str().ok_or("Invalid participant")?,request["item"].as_str().ok_or("Invalid item")?)})),
         "purgeEligible" => {
             let input: crate::purge::Input =
                 serde_json::from_value(request.clone()).map_err(|e| e.to_string())?;

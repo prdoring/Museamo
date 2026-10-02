@@ -20,7 +20,7 @@ Adapted from ../newwebsite/WPA_STYLE_GUIDE.md and its production DESIGN.md. The 
 | Stars | #765000 | #D3922E |
 | Errors | #A9412B | #FFAE98 |
 
-Trailhead Clean: 24px mastheads, 22px sheet and section headings. Dynamic tag titles use DM Sans in natural case. Source Serif 4 regular/semibold: 17px thoughts, composition and preview, 1.55 web line height. DM Sans: controls, metadata and settings. Widgets use the launcher font. Font sources are bundled in full, with generic fallbacks for characters outside each font. Italic thought text permits synthetic slant; bold uses the supplied semibold face.
+DM Sans bold: 24px mastheads, 22px sheet and section headings. Dynamic tag titles use DM Sans in natural case. Source Serif 4 regular/semibold: 17px thoughts, composition and preview, 1.55 web line height. DM Sans: controls, metadata and settings. Widgets use the launcher font. Both font families are bundled under the SIL Open Font License, with generic fallbacks for characters outside each font. Italic thought text permits synthetic slant; bold uses the supplied semibold face.
 
 Phone surfaces use the neutral construction-paper tile for surrounding stock, dock and sheet chrome at 768px, and the ink tile at 320px for navy bands and dark stock. Desktop chrome uses flat palette colors with no construction-paper shading; desktop reading surfaces have faint grain at 1.8%. Phone reading surfaces use quiet grain at 4% in light mode (2.5% web dark), never layered over construction-paper shading. Texture does not paint over control text or intercept input. Native tiles scale with density; RemoteViews keeps an explicit 40dp inner row so bitmap intrinsic dimensions cannot enlarge widgets.
 

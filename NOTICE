@@ -1,0 +1,10 @@
+Museamo
+Copyright (c) 2026 prdoring and Museamo contributors
+
+Museamo's original code and artwork are licensed under the GNU Affero General
+Public License, version 3 only. See LICENSE for the complete terms.
+Source: https://github.com/prdoring/Museamo
+
+Bundled fonts and external dependencies retain their own copyright notices
+and licenses. Font notices are in public/fonts/. See docs/licensing.md and
+docs/paper-assets.md for the asset inventory.

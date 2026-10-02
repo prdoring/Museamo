@@ -1,83 +1,158 @@
+![Museamo — a place for your thoughts](docs/images/banner.svg)
+
 # Museamo
 
-A private stream of thoughts. Tap a homescreen widget, type, send. Come back later to find the gems.
+**A private stream of thoughts for Android and Windows.**
 
-The Windows companion keeps an offline library and links directly with Android and other PCs on the local network. Use **Settings → Linked devices**, verify the code on both screens, then approve combining libraries. Thoughts, tags, original attachments, and Recovery sync in both directions. See [local-network sync](docs/offline-sync.md) for behavior and native build instructions.
+Message yourself when an idea arrives. Save a word, a reminder, a photo, or something you want to remember. Come back to a searchable feed, star your favorites as **Gems**, and collect related thoughts with **hashtags**.
+
+Your library lives on your devices. Capture works offline, and your linked Android and Windows apps sync directly over the local network. There is no account to create and no cloud service to keep running.
+
+[Download](https://github.com/prdoring/Museamo/releases) · [Getting started](#install) · [How to use it](#use-museamo) · [User guide](docs/user-guide.md) · [Development](#development)
+
+![Museamo on Windows: a sidebar for Stream, Gems, Tags, and Map beside the thought feed](docs/images/desktop-stream.jpg)
+
+*Screenshots use sample thoughts. Browser previews show simulated locations and a temporary-preview strip; native widgets are shown separately.*
+
+## What you can do
+
+- **Capture quickly.** Write in the app or tap a resizable Android home-screen widget. Closing capture keeps your draft.
+- **Find the good bits.** Search your Stream, star thoughts as Gems, or browse by hashtag.
+- **Make a checklist.** Turn a tag into a Checklist and check off its thoughts.
+- **Keep more than text.** Add formatting, original photos and videos, clickable links, and optional locations.
+- **Use your own devices.** Link Android and Windows libraries over your local network, with a matching-code check on both screens.
+- **Keep a way back.** Export portable ZIP backups and restore deleted thoughts or earlier versions from Recovery.
+
+## Install
+
+Open [GitHub Releases](https://github.com/prdoring/Museamo/releases) and choose a version with downloadable assets. Early test builds may be under **Pre-releases**. The first release will appear there after it has been built locally and published.
+
+| Your device | Download | Requirements |
+| --- | --- | --- |
+| Android | `Museamo-VERSION-android.apk` (or `-android-debug.apk` for a test build) | Android 7 or newer; Android System WebView 105 or newer |
+| Windows — recommended | `Museamo-VERSION-windows-x64-setup.exe` | 64-bit Windows 10 or 11; includes WebView2 offline setup |
+| Windows — standalone | `Museamo-VERSION-windows-x64.exe` | 64-bit Windows 10 or 11 with Microsoft Edge WebView2 Runtime already installed |
+
+### Android
+
+1. Download the APK on your phone and open it.
+2. If Android asks, allow that browser or file manager to **install unknown apps**, then finish installing Museamo.
+3. Open Museamo and tap **Message yourself…** to save your first thought.
+4. For faster capture, long-press your home screen, open **Widgets**, and add **Museamo**.
+
+### Windows
+
+1. Download and run the **setup.exe** installer.
+2. Open Museamo from the Start menu and choose **Message yourself…**.
+3. Optionally link your phone from **Settings → Linked devices**.
+
+The standalone EXE runs without Museamo's installer, but still stores its library in your Windows user profile. Moving the EXE does not move the library. Use **Export** to transfer your data. Windows downloads are currently unsigned and may trigger a publisher warning; download them from this repository's release page.
+
+### Updating
+
+Use **Settings → Backup → Export** first and keep the ZIP outside the app. Install the new APK over the existing app, or run the new Windows installer.
+
+Android accepts an update only when its signing key matches your installed version. Debug and release keys are different. If Android refuses an update, keep the existing installation and export your library before changing installations. Uninstalling or clearing app storage deletes Android data. Backups include saved thoughts and attachments, but exclude unfinished drafts.
+
+## Use Museamo
+
+### 1. Capture a thought
+
+Tap **Message yourself…**, type, and choose **Send**. Use the photo, formatting, hashtag, and pin controls when you need them. Closing capture keeps the draft for later.
+
+![Composing a sample thought on Windows, with attachment, formatting, tag, location, and Send controls](docs/images/desktop-capture.jpg)
+
+On Windows, **Ctrl+N** opens capture and **Ctrl+F** opens search.
+
+### 2. Put capture on your Android home screen
+
+Add a Museamo widget from your launcher's widget menu. Give it a label, then choose fixed tags or a tag picker. Each widget has its own draft. Drag the resize handles to make a compact tile or a wider card; supported sizes depend on your launcher.
+
+![Native Android widget with Continue draft, a For later tag picker, and an Open Museamo shortcut](docs/images/android-widget.png)
+
+Tap the message area to capture, the hashtag picker to choose a tag, or the arrow-out icon to open Museamo.
+
+### 3. Find and organize what you saved
+
+| View | Use it for |
+| --- | --- |
+| **Stream** | Everything, newest first. Search to find an old thought. |
+| **Gems** | Your starred thoughts. Tap a thought's star to keep it here. |
+| **Tags** | Collections such as `#Ideas` or `#"Cool words"`. |
+| **Map** | Thoughts with saved locations. Tap a pin or location to explore. |
+
+Type `#` while composing to see matching tags, or use **Add tag**. A new complete hashtag is created when you send. Multiword hashtags use quotes: `#"Cool words"`.
+
+![Tag collections on Windows, including the For later Checklist tag](docs/images/desktop-tags.jpg)
+
+### 4. Turn a collection into a checklist
+
+In **Tags**, open a tag's edit menu and select **Checklist**. Thoughts in that collection gain a checkbox, and unchecked items appear first. A thought has the same checked state wherever it appears.
+
+![A Checklist collection with unchecked thoughts above checked thoughts](docs/images/desktop-checklist.jpg)
+
+The checklist icon in the **Stream** header filters the feed to to-dos across all Checklist tags.
+
+### 5. Bring your phone and PC together
+
+Open **Settings → Linked devices** on both devices while they are on the same local network. Select the nearby device, compare the complete matching code on both screens, then approve **Combine and link** on both. Your saved thoughts, tags, locations, original attachments, and Recovery can then sync both ways.
+
+If discovery is blocked, use **Link using an address**. Guest Wi-Fi can prevent devices from reaching one another. Opening both apps and choosing **Sync now** helps Android catch up. Windows continues syncing in the tray when you close its window; choose **Quit** in the tray menu to stop it.
+
+[More about linking and sync](docs/offline-sync.md)
+
+### 6. Keep a backup
+
+Choose **Settings → Backup → Export** and save the ZIP somewhere safe. **Import** restores a portable archive. Use **Recovery** to restore a deleted thought or an earlier version as a new thought.
+
+![Settings showing the Backup Export and Import controls](docs/images/desktop-backup.jpg)
+
+Backups are unencrypted. Keep them somewhere you trust. Sync gives you copies on linked devices, but deletions also sync, so it does not replace a backup.
+
+<details>
+<summary>Phone screenshots — light and dark themes</summary>
+
+<p>
+  <img src="docs/images/phone-stream.png" width="320" alt="Phone Stream in the light paper theme, with thought text, locations, tag chips, and bottom navigation">
+  <img src="docs/images/phone-dark.png" width="320" alt="Phone Stream in the dark ink theme, showing the same sample library">
+</p>
+
+</details>
+
+## Your data and privacy
+
+Museamo stores your library locally and has no analytics or account system. Full-library sync is limited to devices you explicitly link. Android also supports explicitly shared hashtags; review the sharing screen before sharing their thoughts, attachments, or locations with other people.
+
+Some optional features use the internet: linked media contacts its host, address lookup may send coordinates to your device's geocoding service, and maps request OpenStreetMap tiles. Attached original files remain in your library. Android location capture uses foreground permission and does not track you in the background.
+
+[Detailed user guide](docs/user-guide.md) · [Sync behavior and trust](docs/offline-sync.md)
 
 ## Development
 
-Requires Node 22+, JDK 21, Android SDK 36 and build-tools 36.0.0. Android Studio's bundled JBR works. Minimum device: Android 7 (API 24), with WebView 105 or newer.
+The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. Windows uses Tauri with Rust/SQLite storage. Both share a Rust core for local-network sync.
+
+For a temporary browser preview, install Node.js 22 or newer, then run:
 
 ```sh
 npm ci
 npm run dev
-npm run typecheck
-npm test
-npm run android:sync
-cd android
-./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
-On Windows use `gradlew.bat`, set `JAVA_HOME` to Android Studio's `jbr`, and set `ANDROID_HOME` to your SDK folder. Alternatively create ignored `android/local.properties` with `sdk.dir` pointing to that SDK. Install Rust’s Android targets and the NDK, then run `npm run android:sync-core` for the shared native library. `npm run android:open` opens Android Studio. The browser is an explicitly labeled, ephemeral preview; real libraries use native Room or desktop SQLite. `npm run desktop:dev` starts the Windows companion; `npm run desktop:build` creates its installer.
+The preview resets on refresh and does not save a real library. Use its layout switch for the Windows view. Native builds require the tools in the [development guide](docs/development.md).
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`. Install using `adb install -r` or Android Studio. Instrumented database/lifecycle checks run with `./gradlew :app:connectedDebugAndroidTest` when an emulator/device is attached. CI attaches a debug APK to successful workflow runs. Debug signing is for development; store publishing requires a separate release key and review.
+```sh
+npm run typecheck
+npm test
+npm run test:release
+cargo test --workspace
+```
 
-## Capture
+**Release builds happen locally on Windows.** After configuring signing and committing a version, `npm run release` tests and builds the APK, Windows installer, standalone EXE, and source archive, then pushes the source/tag and publishes the downloads to GitHub Releases. [Release setup and commands](docs/releases.md)
 
-Widgets default to 3 × 1 and resize in both directions, down to a compact capture tile (1 × 1 on supported launchers) or up to a roomy card. Compact tiles show two icon buttons: message capture and Open Museamo; wider layouts add the label, tag picker, and Open Museamo shortcut. Taller cards use the available height. There is no app-imposed maximum size; exact grid sizes depend on your launcher. Long-press the widget and drag its resize handles. If an existing widget retains the old limits after upgrading, remove and re-add it.
+GitHub Actions validates changes and retains test reports. It does not publish release binaries.
 
-While composing, type `#` to see matching tags. Completion keeps the hashtag inline. Multiword names use `#"Cool words"`. Choose **Use new tag** or leave a complete hashtag in the message; missing inline tags are created when you send. **Add tag** also supports explicit selection and creation without inserting text. Removing an inline tag chip removes its tokens. URL fragments are not tags.
+[Contributing](CONTRIBUTING.md) · [Architecture](docs/architecture.md) · [Design system](DESIGN.md) · [Device checklist](docs/device-checklist.md) · [Verification records](docs/verification.md)
 
-Long-press your launcher, open Widgets, and add Museamo. Choose a label and either fixed default tags (including none), or a tag picker. Add as many widgets as you like. Each has its own draft. Back preserves a draft; Send saves it exactly once and closes. A picker change affects the next fresh draft, never a draft already in progress. Existing/imported profile settings can be copied when configuring another widget, keeping instances independent.
+## License
 
-Stream shows everything, Gems shows starred thoughts, and Tags provides collections. Settings manages widgets and portable ZIP backups (including original attachments). Uninstalling or clearing app storage removes local data: keep exports somewhere safe. Android cloud backup and device-transfer backup are disabled for app data. Exports are unencrypted ZIP archives; choose their destination yourself. Existing version 1 JSON backups remain importable.
-
-On the Tags page, open a tag’s edit menu and turn on **Checklist**. Every thought with that tag gets a checkbox throughout the app, including Stream, Gems, and map cards. Checking it crosses out its text. Checklist categories show compact rows with unchecked thoughts first, newest first within each group. Open an item’s menu for its timestamp, location, and Gems action. A thought with multiple Checklist tags shares one checked state. Turning Checklist off or removing its last Checklist tag hides the checkbox and remembers its state for later.
-
-Tap the **checklist icon** in the Stream header to show only thoughts belonging to Checklist tags. It includes checked and unchecked items from every Checklist category, keeps newest-first order, and works with search and pagination. Tap it again to return to all thoughts.
-
-Widgets and native tag pickers show a small checklist icon beside Checklist tags. Capture and draft behavior stays the same; newly captured thoughts start unchecked. Backup ZIPs use manifest version 5 and preserve category types, completion, Recovery, and original attachments. Versions 1–4 remain importable. See [checklist verification](docs/checklist-verification.md) and [local-network sync](docs/offline-sync.md).
-
-Locations show a short label such as “Trader Joe's, Portland OR,” “Portland OR,” or “Antwerp, Belgium.” Full addresses remain stored, searchable, and included in backups. Place names depend on available geocoding metadata or a custom name you enter.
-
-Before updating a device with important thoughts, use **Settings → Backup → Export** and keep the archive outside the app. Install the APK as an update over the existing app. Keep the existing installation if Android refuses the update; uninstalling or clearing app storage deletes local data. ZIP exports include posted thoughts and attachments; unfinished drafts are retained by an in-place update but are not included in the archive.
-
-## Architecture and validation
-
-See [architecture](docs/architecture.md) for native bridge, persistence, and future routing contracts. See [device checklist](docs/device-checklist.md) for launcher checks that require hardware. No publishing integrations, account system, or analytics are implemented.
-
-See the [verification record](docs/verification.md) and [companion verification](docs/offline-sync-verification.md) for completed checks and remaining device validation. CI runs the suite on an Android emulator and builds downloadable Android and Windows packages.
-
-## UX redesign
-
-The app now uses a compact private feed, a bottom capture bar, explicit post actions, searchable tags with counts, and independent Undo notifications. Browser preview supports capture, editing, tags, stars, drafts, and simulated failures in memory; it never writes Android data.
-
-Windows uses a continuous sidebar, an integrated header with custom window controls, a centered reading column, centered composition, and anchored post menus. Ctrl+N opens capture; Ctrl+F opens search. Preview the desktop layout using the preview's layout switch or `?previewLayout=desktop`. Functional transitions preserve keyed posts/media, reading position, and independent Undo, and respond immediately to reduced motion. Android app pages, native capture, tag picking, and widget setup stay in upright portrait; Android 8 uses an opaque bottom-aligned capture host. See [polish verification](docs/polish-verification.md).
-
-Formatting: select text and use **B**, *I*, bullets, numbering, or quote controls in the app editor or native widget composer. Editing shows lightweight Markdown; **Preview** shows the formatted result. Standard Paste preserves supported structure and emphasis when the clipboard supplies formatted text, using Museamo's typography. Copy text includes HTML formatting with a plain-text fallback. Drafts and backups retain the Markdown. Native database migrations preserve existing thoughts and drafts through schema version 5.
-
-See [DESIGN.md](DESIGN.md) for interaction rules and [UX verification](docs/ux-verification.md) for the remaining physical-device checks. No automatic preview server is required: run npm run dev in your own terminal and stop it with Ctrl+C.
-
-Saved web addresses (`https://`, `http://`, and `www.`) remain clickable. Direct HTTPS image/video links and supported YouTube/Vimeo links also display media in the feed when visible. Other links open outside Museamo. Widgets also have a separate Open Museamo icon. Widget setup explains the two tag modes and uses a normal screen with Cancel and Add widget/Save changes controls.
-
-## Photos and videos
-
-Choose **Attach photos/videos** in the app or widget composer. Add up to 10 files in selection order (50 MiB per image, 500 MiB per video), with or without text. Museamo copies originals into private storage without compression and generates separate thumbnails. Sending waits for imports to finish. Closing keeps the draft; removing an attachment while editing only affects the saved thought after Save.
-
-Photos open in a full-screen viewer with zoom and previous/next controls. Videos have playback, seeking, and fullscreen controls; they never autoplay. Device codec support varies. Unsupported originals remain stored, backed up, and synced; playback explains when a device cannot decode them. Internet connectivity is needed for linked media, but locally attached media works offline.
-
-Linked media loads from its host when it enters the feed, so the host receives a network request. YouTube/Vimeo can reject restricted videos; **Open original link** remains available. Museamo does not scrape websites, download linked videos, or upload your attachments.
-
-ZIP backups contain a version 5 manifest, original attached files, Recovery, and SHA-256 checksums. They exclude drafts, device keys, sync membership, and downloaded copies of links. Keep the complete archive to restore media. Large libraries need enough storage for staging the import. Older versions of Museamo cannot read these ZIP exports.
-
-See [rich media verification](docs/rich-media-verification.md) for automated results and the remaining physical-device and hosted-player checks.
-
-## Post locations
-
-Museamo asks for foreground location permission the first time you open the app while device location services are on. Allow it to attach locations automatically; there is no separate Settings opt-in. New app/widget composers use an OS position up to one minute old or wait up to 10 seconds for a new position. If location services are disabled, permission is unavailable, or no fix arrives before Send, the post saves without a location. There is no prompt to enable device services and no background tracking.
-
-Coordinates are stored first. Android then attempts a named feature, address, or town/region; if lookup fails, **Saved location** still opens the coordinates on a map. Exact restaurants are not guaranteed. Existing drafts keep their original position. Use the pin icon beside photos, formatting, and tags to add or retry location directly, or to refresh, correct a place name, or remove it; removed draft locations are not automatically reattached.
-
-The **Map** tab shows located posts with search, tag, and Gems filters. Tap a post’s location to focus its pin, or choose **Open in maps**. Posts and labels remain local; reverse geocoding may send coordinates to the device’s geocoding service, and map viewing requests OpenStreetMap tiles. Tiles need internet and are not downloaded for offline use. The browser preview uses clearly simulated coordinates, never your actual position.
-
-ZIP backups use manifest version 5 and include saved locations, Recovery, and original attachments. Versions 1–4 remain importable. See [location verification](docs/location-verification.md) for checks and device coverage.
+Museamo is licensed under the [GNU Affero General Public License v3.0](LICENSE). Commercial use is allowed. Distributed derivatives must provide corresponding source under the AGPL; modified network services must also offer that source to their users. Preserve copyright and license notices. See [licensing and third-party assets](docs/licensing.md).

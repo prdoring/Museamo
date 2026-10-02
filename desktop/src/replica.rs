@@ -206,6 +206,7 @@ impl Store {
         for (snapshot, is_local) in [(local, true), (peer, false)] {
             for tag in snapshot {
                 let id = uuid(string(tag, "id")?)?;
+                if self.sharing_metadata(id)?.is_some() || self.sharing_metadata(&self.canonical_tag(id)?)?.is_some() { continue; }
                 let name = string(tag, "name")?;
                 let kind = string(tag, "type")?;
                 let key = (museamo_sync_core::normalize_tag(name), kind.to_owned());
@@ -310,6 +311,10 @@ impl Store {
             .collect();
         let chosen = winner(&revisions, self.is_retired(kind, entity)?)?;
         let chosen_id = chosen.filter(|r| !r.deleted).map(|r| r.id());
+        let incoming=chosen_id.as_deref().and_then(|id|envelopes.iter().find(|e|e.header.revision.id()==id)).and_then(|e|e.payload.as_ref());
+        if let Some(shared)=self.personal_shared_projection(kind,entity,incoming)? {
+            if let Some(mut value)=shared {if let Some(head)=chosen {value["revision"]=json!(head.id());}self.put_local(kind,entity,&value)?;} else {self.db.execute("DELETE FROM objects WHERE kind=?1 AND id=?2",params![kind,entity]).map_err(|e|e.to_string())?;}return Ok(());
+        }
         self.db
             .execute(
                 "DELETE FROM objects WHERE kind=?1 AND id=?2",
@@ -1186,10 +1191,11 @@ impl Store {
             .map_err(|e| e.to_string())?;
         let records: Result<Vec<_>> = rows.map(|r| r.map_err(|e| e.to_string())).collect();
         drop(stmt);
-        let records: Vec<_> = records?
+        let mut records: Vec<_> = records?
             .into_iter()
             .filter(|(i, _, _)| only.is_none_or(|v| i == v))
             .collect();
+        let mut private=vec![];for record in records {if !self.clear_shared_recovery(&record.0)?{private.push(record);}}records=private;
         if records.is_empty() {
             return Ok(json!({}));
         }
@@ -1463,6 +1469,14 @@ impl museamo_sync_core::Platform for NativePlatform {
         let mut db = self.store.lock().map_err(|_| "Storage unavailable")?;
         let previous_changes = db.db.total_changes();
         let result = match method {
+            "syncSharingRequired" => Ok(json!({"required":db.sharing_registry()?.bindings.values().any(|b|!b.detached)})),
+            "shareLoad"|"sharePending"|"shareSeed"|"shareCommit" => db.sharing_call(method,&input),
+            "shareMissingMedia" => {
+                let allowed=db.scoped_media(string(&input,"scope")?)?;
+                missing_media(&db,&json!({"limit":32,"allowed":allowed}))
+            },
+            "shareReadMedia" => {if !db.scoped_media(string(&input,"scope")?)?.contains(string(&input,"id")?){return Err("Original is not in this shared list".into());}read_media(&db,&input)},
+            "shareWriteMedia" => {if !db.scoped_media(string(&input,"scope")?)?.contains(string(&input,"id")?){return Err("Original is not in this shared list".into());}write_media(&db,&input)},
             "syncIdentity" => db
                 .identity
                 .as_ref()
@@ -1492,7 +1506,7 @@ impl museamo_sync_core::Platform for NativePlatform {
                 db.enroll(string(&input, "groupId")?)?;
                 Ok(json!({}))
             }
-            "syncEnrollmentTags" => Ok(json!({"tags":db.all("tag")?})),
+            "syncEnrollmentTags" => Ok(json!({"tags":db.all("tag")?.into_iter().filter(|t|db.sharing_metadata(t["id"].as_str().unwrap_or("")).ok().flatten().is_none()).collect::<Vec<_>>()})),
             "syncCoalesceTags" => db.coalesce_tags(&input),
             "syncExport" => db.export_changes(&input),
             "syncApply" => db.apply(&input),
@@ -1516,7 +1530,7 @@ impl museamo_sync_core::Platform for NativePlatform {
         if (result.is_ok() || storage_changed)
             && matches!(
                 method,
-                "syncApply" | "syncEnroll" | "syncWriteMedia" | "syncCoalesceTags"
+                "syncApply" | "syncEnroll" | "syncWriteMedia" | "syncCoalesceTags" | "shareCommit" | "shareWriteMedia"
             )
         {
             if let Some(app) = &self.app {
@@ -1580,6 +1594,7 @@ fn missing_media(db: &Store, input: &Value) -> Result<Value> {
     let mut total = 0;
     let limit = input["limit"].as_u64().unwrap_or(32).clamp(1, 32) as usize;
     for (id, m) in referenced_media(db, false)? {
+        if input["allowed"].as_array().is_some_and(|a| !a.iter().any(|v| v == &id)) { continue; }
         if !db.root.join("media").join(&id).is_file() {
             total += 1;
             if items.len() == limit {

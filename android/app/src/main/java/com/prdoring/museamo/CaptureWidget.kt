@@ -57,15 +57,16 @@ class CaptureWidget : AppWidgetProvider() {
             val tag = profile?.selectedTagId?.let { dao.tag(it) }
             return buildViews(context, widgetId, width, height, profile,
                 profile?.let { dao.draft(it.id)?.text?.isNotBlank() == true } == true,
-                tag?.name ?: "No tag", tag?.type == "checklist")
+                tag?.name ?: "No tag", tag?.type == "checklist", if (profile?.mode == "picker") tag?.shared == true else profile?.let { ids(it.tagIds).any { id -> dao.tag(id)?.shared == true } } == true)
         }
-        internal fun buildViews(context: Context, widgetId: Int, width: Int, height: Int, profile: ProfileRow?, pendingDraft: Boolean, tagName: String, checklist: Boolean = false): RemoteViews {
+        internal fun buildViews(context: Context, widgetId: Int, width: Int, height: Int, profile: ProfileRow?, pendingDraft: Boolean, tagName: String, checklist: Boolean = false, shared: Boolean = false): RemoteViews {
             val card = width >= 100 && height >= 120
             // Keep one- and two-cell rows free of squeezed labels and picker controls.
             val compact = width < 260 && !card
             val views = RemoteViews(context.packageName, if (card) R.layout.capture_widget_card else if (compact) R.layout.capture_widget_compact else R.layout.capture_widget)
             val label = if (profile == null) "Tap to set up" else if (pendingDraft) "Continue draft" else profile.label
-            views.setContentDescription(R.id.widget_capture, if (compact && profile != null) "Message yourself. $label" else label)
+            views.setViewVisibility(R.id.widget_shared, if (shared) View.VISIBLE else View.GONE)
+            views.setContentDescription(R.id.widget_capture, (if (compact && profile != null) "Message yourself. $label" else label) + if (shared) ". Shared hashtag" else "")
             if (!compact) {
                 views.setTextViewText(R.id.widget_label, label)
                 views.setTextViewText(R.id.widget_prompt, if (profile == null) "Tap to set up" else "A thought…")
@@ -89,7 +90,7 @@ class CaptureWidget : AppWidgetProvider() {
                 views.setViewVisibility(R.id.widget_picker_text, if (checklist && width < 260) View.GONE else View.VISIBLE)
                 views.setTextViewText(R.id.widget_picker_text, if (width < 260) "#" else tagName)
                 views.setInt(R.id.widget_picker_text, "setMaxWidth", ((if (card) width - 84f else (width - 40) * .35f - 36).minus(if (checklist) 16f else 0f).coerceAtLeast(18f) * context.resources.displayMetrics.density).toInt())
-                views.setContentDescription(R.id.widget_picker, "Choose tag. Current: " + tagName + if (checklist) ", Checklist" else "")
+                views.setContentDescription(R.id.widget_picker, "Choose tag. Current: " + tagName + (if (checklist) ", Checklist" else "") + if (shared) ", Shared" else "")
                 views.setOnClickPendingIntent(R.id.widget_picker, intent(TagPickerActivity::class.java, "picker"))
             }
             return views

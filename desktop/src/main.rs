@@ -8,6 +8,7 @@ mod media;
 mod replica;
 mod startup;
 mod store;
+mod sharing;
 
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
@@ -18,6 +19,7 @@ struct AppState {
     store: Arc<Mutex<Store>>,
     media_base: String,
     sync: Arc<museamo_sync_core::Coordinator>,
+    sharing: Arc<museamo_sync_core::sharing::ShareService>,
 }
 
 #[tauri::command]
@@ -30,6 +32,8 @@ async fn library_command(
     let store = state.store.clone();
     let base = state.media_base.clone();
     let sync = state.sync.clone();
+    let sharing=state.sharing.clone();
+    let notify_sharing=sharing.clone();
     let notify_sync = sync.clone();
     let changed = matches!(
         method.as_str(),
@@ -49,9 +53,14 @@ async fn library_command(
     );
     let result = tauri::async_runtime::spawn_blocking(move || -> store::Result<Value> {
         match method.as_str() {
+            "getTagShareState"|"syncTagShare" => sharing.command(&method,input),
+            "startTagSharing"|"createTagInvite"|"cancelTagInvite"|"previewTagInvite"|"joinTagShare"|"leaveTagShare"|"stopTagSharing"|"removeTagShareMember"|"scanTagInvite" => Err("Manage shared hashtags on your phone.".into()),
             "getSyncState" | "listDevices" | "linkDevice" | "confirmPairing"
             | "acceptEnrollment" | "syncNow" | "removeDevice" | "cancelPairing" => {
-                sync.command(&method, input)
+                let mut result=sync.command(&method, input)?;
+                if method == "getSyncState" { result["sharing"]=sharing.command("getSharingState",json!({}))?; }
+                if matches!(method.as_str(), "syncNow"|"removeDevice"|"acceptEnrollment") { sharing.local_data_changed(); }
+                Ok(result)
             }
             "getStartupSettings" => startup::get(),
             "setStartupEnabled" => startup::set(
@@ -119,6 +128,7 @@ async fn library_command(
             if changed {
                 let _ = app.emit("dataChanged", ());
                 let _ = notify_sync.local_data_changed();
+                notify_sharing.local_data_changed();
             }
             Ok(result)
         }
@@ -159,12 +169,15 @@ fn main() {
                 Some(app.handle().clone()),
             ));
             let sync =
-                museamo_sync_core::Coordinator::new(platform).map_err(std::io::Error::other)?;
+                museamo_sync_core::Coordinator::new(platform.clone()).map_err(std::io::Error::other)?;
             let _ = sync.start("0.0.0.0:0"); // LAN failures surface in Devices; offline capture remains usable.
+            let sharing=museamo_sync_core::sharing::ShareService::new(platform,sync.clone()).map_err(std::io::Error::other)?;
+            let _=sharing.start("0.0.0.0:0");
             app.manage(AppState {
                 store,
                 media_base,
                 sync,
+                sharing,
             });
             use tauri::{
                 menu::{Menu, MenuItem},

@@ -40,7 +40,7 @@ Removal never restores access when concurrent membership changes arrive. Conflic
 
 ZIP manifest version 5 includes Recovery and referenced originals. Older supported backups remain importable. Imports become local saved-data mutations that can sync. Staging, checksum verification, and rollback protect existing content. Portable backups carry no identity keys, membership, or replication cursors; new installations get fresh identities.
 
-Windows needs Node 22+, Rust’s MSVC toolchain, and Windows C++ build tools. Run `npm ci`, then `npm run desktop:dev`. `npm run desktop:build` produces the executable and NSIS installer under `target/release/bundle/nsis`. The installer bundles WebView2's offline installer so installation does not depend on downloading it.
+Windows needs Node 22+, Rust’s MSVC toolchain, and Windows C++ build tools. Run `npm ci`, then `npm run desktop:dev`. `npm run desktop:build` produces the app executable at `target/release/museamo-desktop.exe` and the NSIS installer under `target/release/bundle/nsis`. The installer bundles WebView2's offline installer so installation does not depend on downloading it. See [development](development.md) and [local releases](releases.md).
 
 Android needs the SDK, NDK, and Rust Android targets:
 

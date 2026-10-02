@@ -1,0 +1,31 @@
+name: Bug report
+description: Report an app or installation problem
+body:
+  - type: markdown
+    attributes:
+      value: Please use sample data. Remove private thoughts, locations, backups, and device addresses from screenshots and logs.
+  - type: input
+    id: version
+    attributes:
+      label: Museamo version and download
+      placeholder: 0.4.0 Android APK / Windows installer / standalone EXE
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Device and operating system
+      placeholder: Android version and launcher, or Windows version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or error messages

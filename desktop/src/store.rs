@@ -43,6 +43,7 @@ pub struct Store {
     pub root: PathBuf,
     pub device: String,
     pub identity: Option<std::sync::Arc<crate::identity::Identity>>,
+    pub shared_projection: bool,
 }
 impl Store {
     pub fn open(root: &Path) -> Result<Self> {
@@ -51,7 +52,9 @@ impl Store {
         let db = Connection::open(root.join("library.sqlite")).map_err(|e| e.to_string())?;
         db.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| e.to_string())?;
-        db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA secure_delete=ON;
+        let version:u32=db.query_row("PRAGMA user_version",[],|r|r.get(0)).map_err(|e|e.to_string())?;
+        if version>3 {return Err("This library requires a newer Museamo version.".into());}
+        db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA secure_delete=ON; BEGIN IMMEDIATE;
           CREATE TABLE IF NOT EXISTS objects(kind TEXT NOT NULL,id TEXT NOT NULL,payload TEXT NOT NULL,PRIMARY KEY(kind,id));
           CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS revisions(id TEXT PRIMARY KEY,kind TEXT NOT NULL,entity_id TEXT NOT NULL,header TEXT NOT NULL,payload TEXT);
@@ -64,7 +67,8 @@ impl Store {
           CREATE TABLE IF NOT EXISTS suppression(id TEXT PRIMARY KEY,envelope TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS suppression_effects(id TEXT PRIMARY KEY,origin TEXT NOT NULL,sequence INTEGER NOT NULL);
           CREATE TABLE IF NOT EXISTS tag_aliases(source_id TEXT PRIMARY KEY,canonical_id TEXT NOT NULL);
-          PRAGMA user_version=2;").map_err(|e|e.to_string())?;
+          CREATE TABLE IF NOT EXISTS sharing_pending(id TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at INTEGER NOT NULL);
+          PRAGMA user_version=3; COMMIT;").map_err(|e|e.to_string())?;
         let device = Self::metadata_on(&db, "device")?.unwrap_or_else(id);
         db.execute(
             "INSERT OR IGNORE INTO metadata VALUES ('device',?1)",
@@ -76,6 +80,7 @@ impl Store {
             root: root.to_owned(),
             device,
             identity: None,
+            shared_projection: false,
         };
         store.identity = Some(std::sync::Arc::new(crate::identity::Identity::load(
             &store,
@@ -199,6 +204,7 @@ impl Store {
             .execute_batch("SAVEPOINT record_mutation")
             .map_err(|e| e.to_string())?;
         let result = (|| -> Result<String> {
+            self.record_sharing(kind,entity,&value,deleted)?;
             let sequence = self
                 .metadata("sequence")?
                 .unwrap_or_else(|| "0".into())
@@ -379,6 +385,12 @@ impl Store {
                 .filter(|t| normalize_tag(t["name"].as_str().unwrap_or_default()) == normalized)
                 .filter_map(|t| t["id"].as_str().map(str::to_owned))
                 .collect();
+            let explicit:Vec<_>=matching.iter().filter(|id|selected.contains(id)).collect();
+            if old.contains(&normalized) && explicit.is_empty() { continue; }
+            if matching.len()>1 {
+                if explicit.len()!=1 && matching.iter().any(|id|self.sharing_metadata(id).ok().flatten().is_some()) { return Err(format!("Several hashtags are named {name}. Choose the intended hashtag explicitly.")); }
+                continue;
+            }
             let tag = if matching.len() == 1 {
                 matching[0].clone()
             } else if matching.is_empty() && !old.contains(&normalized) {
@@ -405,15 +417,16 @@ impl Store {
                 }
                 let mut tags = self.all("tag")?;
                 for tag in &mut tags {
-                    let id = tag["id"].as_str().unwrap_or_default();
+                    let id = tag["id"].as_str().unwrap_or_default().to_owned();
                     tag["count"] = json!(entries
                         .iter()
                         .filter(|e| e["tagIds"]
                             .as_array()
-                            .is_some_and(|v| v.iter().any(|v| v.as_str() == Some(id))))
+                            .is_some_and(|v| v.iter().any(|v| v.as_str() == Some(id.as_str()))))
                         .count());
                     tag["normalizedName"] =
                         json!(normalize_tag(tag["name"].as_str().unwrap_or_default()));
+                    if let Some(sharing)=self.sharing_metadata(&id)?{tag["sharing"]=sharing;}
                 }
                 tags.sort_by_key(|t| normalize_tag(t["name"].as_str().unwrap_or_default()));
                 Ok(json!({"tags":tags,"profiles":[]}))
@@ -558,7 +571,7 @@ impl Store {
                 let tag_id = input["id"].as_str().map(str::to_owned).unwrap_or_else(id);
                 uuid(&tag_id)?;
                 if self.all("tag")?.iter().any(|t| {
-                    t["id"].as_str() != Some(&tag_id)
+                    t["id"].as_str() != Some(&tag_id) && self.sharing_metadata(t["id"].as_str().unwrap_or("")).ok().flatten().is_none()
                         && normalize_tag(t["name"].as_str().unwrap_or_default())
                             == normalize_tag(name)
                 }) {

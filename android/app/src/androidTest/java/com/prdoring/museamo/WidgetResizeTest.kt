@@ -19,12 +19,12 @@ class WidgetResizeTest {
     @Test fun compactRowsAndCardsKeepActionsInsideBounds() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val base = instrumentation.targetContext
-        for (fontScale in listOf(1f, 2f)) for (mode in listOf("fixed", "picker")) for (checklist in listOf(false, true)) {
+        for (fontScale in listOf(1f, 2f)) for (mode in listOf("fixed", "picker")) for (checklist in listOf(false, true)) for (shared in listOf(false, true)) {
             val context = base.createConfigurationContext(Configuration(base.resources.configuration).apply { this.fontScale = fontScale })
             for ((width, height) in listOf(40 to 40, 80 to 40, 40 to 80, 80 to 80, 140 to 40, 180 to 60, 220 to 60, 259 to 60, 260 to 40, 100 to 120, 260 to 120, 100 to 180, 320 to 280, 600 to 400)) {
                 val compact = width < 260 && !(width >= 100 && height >= 120)
                 val profile = ProfileRow("resize-test", "Words and thoughts to remember for later", mode, "[]", null)
-                val remote = CaptureWidget.buildViews(context, -991, width, height, profile, true, "A very long tag name", checklist)
+                val remote = CaptureWidget.buildViews(context, -991, width, height, profile, true, "A very long tag name", checklist, shared)
                 instrumentation.runOnMainSync {
                     val view = remote.apply(context, FrameLayout(context))
                     val density = context.resources.displayMetrics.density
@@ -46,6 +46,8 @@ class WidgetResizeTest {
                         assertNull(view.findViewById<View>(R.id.widget_label))
                         assertNull(view.findViewById<View>(R.id.widget_picker))
                     }
+                    assertEquals(if (shared) View.VISIBLE else View.GONE, view.findViewById<View>(R.id.widget_shared).visibility)
+                    assertEquals(shared, view.findViewById<View>(R.id.widget_capture).contentDescription.contains("Shared"))
                     action(R.id.widget_capture)
                     if (!compact) assertEquals("Continue draft", view.findViewById<TextView>(R.id.widget_label).text.toString())
                     action(R.id.widget_open_app)

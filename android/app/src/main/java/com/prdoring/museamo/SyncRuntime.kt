@@ -14,6 +14,7 @@ object SyncRuntime {
     private var started = false
     private var multicast: WifiManager.MulticastLock? = null
     private var discovery: LanDiscovery? = null
+    private var sharingDiscovery: LanDiscovery? = null
     private var lastError: String? = null
     private var app: Context? = null
 
@@ -41,11 +42,15 @@ object SyncRuntime {
             lateinit var service: LanDiscovery
             service = LanDiscovery(context, state) { hint -> executor.execute { if (started && discovery === service) runCatching { SyncCore.command("discoveryHint", hint) } } }
             discovery = service; service.start()
+            lateinit var shared: LanDiscovery
+            shared = LanDiscovery(context, state.getJSONObject("sharing"), true) { hint -> executor.execute { if (started && sharingDiscovery === shared) runCatching { SyncCore.command("shareDiscoveryHint", hint) } } }
+            sharingDiscovery = shared; shared.start()
         }
         catch (error: Exception) { if (lock.isHeld) lock.release(); throw error }
     }
     private fun stop() {
         discovery?.stop(); discovery = null
+        sharingDiscovery?.stop(); sharingDiscovery = null
         if (started) runCatching { SyncCore.stop() }.onFailure { lastError = it.message }
         started = false; multicast?.let { if (it.isHeld) it.release() }; multicast = null
     }

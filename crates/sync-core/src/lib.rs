@@ -5,6 +5,7 @@ pub mod json;
 pub mod membership;
 pub mod model;
 pub mod purge;
+pub mod sharing;
 pub mod tags;
 pub mod transport;
 pub mod wire;

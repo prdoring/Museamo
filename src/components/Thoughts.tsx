@@ -6,6 +6,7 @@ import { MediaGallery, AttachmentEditor } from "./Media";
 import { type Attachment } from "../media";
 import { PaperIcon } from "./PaperIcon";
 import { ChecklistToggle } from "./Checklist";
+import { ChecklistMark, SharedMark, TagSharingSettings } from "./Sharing";
 import { FormattedText, copyFormatted } from "./FormattedText";
 import { type Format } from "../formatting";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -29,7 +30,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { bridge, isNative, isChecklistEntry, tagDisplayName, locationLabel, locationStatusMessage, type PostLocation, type Entry, type Tag } from "../data";
-import { capabilities } from "../platform";
+import { capabilities, isDesktop } from "../platform";
 import {
   activeHashtag,
   hashtags,
@@ -157,6 +158,8 @@ export function Post({
   const checklist = isChecklistEntry(entry, tags);
   const compact = checklist && !!checklistCategoryId;
   const visibleTags = tags.filter(t => entry.tagIds.includes(t.id) && (!compact || t.id !== checklistCategoryId));
+  const shared = tags.some(t => t.sharing && entry.tagIds.includes(t.id));
+  const [confirmSharedDeletion, setConfirmSharedDeletion] = useState(false);
   const [expanded, setExpanded] = useState(false),
     [overflows, setOverflows] = useState(false),
     [menu, setMenu] = useState(false);
@@ -245,6 +248,7 @@ export function Post({
           {visibleTags.map((t) => (
               <button className="chip" key={t.id} onClick={() => openTag(t.id)}>
                 # {tagDisplayName(t, tags)}
+                {t.sharing && t.type === "checklist" && <ChecklistMark />}{t.sharing && <SharedMark />}
               </button>
             ))}
         </div>
@@ -293,14 +297,15 @@ export function Post({
             className="menu-row danger"
             onClick={() => {
               setMenu(false);
-              remove();
+              if (shared) setConfirmSharedDeletion(true); else remove();
             }}
           >
             <Trash2 size={19} />
-            Delete
+            {shared ? "Delete for everyone" : "Delete"}
           </button>
         </PostActions>
       )}</Presence>
+      <Presence>{confirmSharedDeletion && <Sheet title="Delete shared thought" close={() => setConfirmSharedDeletion(false)}><p>Delete this item for everyone in the shared hashtag? The deleted version stays in Recovery.</p><div className="action-row"><button className="secondary" onClick={() => setConfirmSharedDeletion(false)}>Keep item</button><button className="secondary danger" onClick={() => { setConfirmSharedDeletion(false); remove(); }}>Delete for everyone</button></div></Sheet>}</Presence>
     </article>
   );
 }
@@ -338,7 +343,7 @@ export function Editor({
             (id) =>
               !tags.some(
                 (t) =>
-                  t.id === id &&
+                  t.id === id && tags.filter(other => other.name.toLowerCase() === t.name.toLowerCase()).length === 1 &&
                   hashtags(initial.text).some(
                     (h) => h.name.toLowerCase() === t.name.toLowerCase(),
                   ),
@@ -353,6 +358,7 @@ export function Editor({
     [cursorText, setCursorText] = useState({ text: "", offset: 0 }),
     [showFormatting, setShowFormatting] = useState(false);
   const [location, setLocation] = useState(initial.location);
+  const [removeShared, setRemoveShared] = useState<Tag>();
   const [stale, setStale] = useState(false);
   const [locating, setLocating] = useState(false);
   const [showLocation, setShowLocation] = useState(false);
@@ -395,6 +401,10 @@ export function Editor({
   // Editability changes are UI state, not draft edits (especially during exit).
   useEffect(() => { editor?.setEditable(!busy && !importing, false); }, [editor, busy, importing]);
   const inline = hashtags(text), active = activeHashtag(cursorText.text, cursorText.offset);
+  function inlineAssigned(tag: Tag) {
+    const names = tags.filter(t => t.name.toLowerCase() === tag.name.toLowerCase());
+    return names.length === 1 && inline.some(h => h.name.toLowerCase() === tag.name.toLowerCase()) && (capture || initial.tagIds.includes(tag.id) || !hashtags(initial.text).some(h => h.name.toLowerCase() === tag.name.toLowerCase()));
+  }
   function update(value: string, ids = selected) {
     setText(value);
     setSelected(ids);
@@ -411,6 +421,7 @@ export function Editor({
     else chain.toggleBlockquote().run();
   }
   function remove(tag: Tag) {
+    if (tag.sharing && !capture && initial.tagIds.includes(tag.id)) { setRemoveShared(tag); return; }
     update(
       removeHashtag(text, tag.name),
       selected.filter((id) => id !== tag.id),
@@ -439,8 +450,9 @@ export function Editor({
       setConfirm(true);
     else close();
   }
-  function insert(name: string) {
+  function insert(name: string, tagId?: string) {
     if (!active || !editor) return;
+    if (tagId) { const ids = [...new Set([...selected, tagId])]; setSelected(ids); change?.(text, ids, attachments); }
     const to = editor.state.selection.from;
     editor.chain().focus().insertContentAt({ from: to - (cursorText.offset - active.start), to: to + active.end - cursorText.offset }, hashtagText(name) + " ").run();
   }
@@ -451,6 +463,9 @@ export function Editor({
     setError("");
     setStale(false);
     try {
+      const assigned = [...new Set([...selected, ...tags.filter(inlineAssigned).map(t => t.id)])];
+      if (tags.filter(t => t.sharing && assigned.includes(t.id)).length > 1) throw new Error("A thought can belong to only one shared hashtag. Your draft is kept.");
+      if (inline.some(h => (capture || selected.some(id => tags.some(t => t.id === id && t.name.toLowerCase() === h.name.toLowerCase())) || !hashtags(initial.text).some(old => old.name.toLowerCase() === h.name.toLowerCase())) && tags.filter(t => t.name.toLowerCase() === h.name.toLowerCase()).length > 1 && tags.filter(t => t.name.toLowerCase() === h.name.toLowerCase() && selected.includes(t.id)).length !== 1)) throw new Error("Choose the Shared or Private hashtag explicitly for matching inline text.");
       ++locationRequest.current;
       await save(text, selected, attachments, locationEdited.current ? location ?? null : undefined);
     } catch (e) {
@@ -539,9 +554,10 @@ export function Editor({
                   <button
                     className="menu-row"
                     key={t.id}
-                    onClick={() => insert(t.name)}
+                    onClick={() => insert(t.name, t.id)}
                   >
                     # {tagDisplayName(t, tags)}
+                    {t.sharing && t.type === "checklist" && <ChecklistMark />}{t.sharing && <SharedMark />}
                   </button>
                 ))}
               {active.query.trim() &&
@@ -565,9 +581,7 @@ export function Editor({
               .filter(
                 (t) =>
                   selected.includes(t.id) ||
-                  inline.some(
-                    (h) => h.name.toLowerCase() === t.name.toLowerCase(),
-                  ),
+                  inlineAssigned(t),
               )
               .map((t) => ({ key: t.id, content: (
                 <button
@@ -578,6 +592,7 @@ export function Editor({
                   onClick={() => remove(t)}
                 >
                   # {tagDisplayName(t, tags)}
+                  {t.sharing && t.type === "checklist" && <ChecklistMark />}{t.sharing && <SharedMark />}
                   <PaperIcon name="close" size={14} />
                 </button>
               ) })),
@@ -620,9 +635,7 @@ export function Editor({
                   .map((t) => {
                     const chosen =
                       selected.includes(t.id) ||
-                      inline.some(
-                        (h) => h.name.toLowerCase() === t.name.toLowerCase(),
-                      );
+                      inlineAssigned(t);
                     return (
                       <button
                         disabled={busy || importing}
@@ -657,6 +670,7 @@ export function Editor({
             </div>
             </Disclosure>
           )}</Presence>
+          {removeShared && <div className="sync-confirm"><p>Remove this thought from #{removeShared.name} for everyone? When you save, a private copy will remain in your library.</p><div className="action-row"><button className="secondary" onClick={() => setRemoveShared(undefined)}>Keep shared</button><button className="secondary danger" onClick={() => { update(removeHashtag(text, removeShared.name), selected.filter(id => id !== removeShared.id)); setRemoveShared(undefined); }}>Remove for everyone</button></div></div>}
           {error && (
             <div className="error" role="alert">
               <p>{error}</p>
@@ -724,6 +738,8 @@ export function TagEditor({
     [confirm, setConfirm] = useState(false),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [sharing, setSharing] = useState(tag === "new" ? undefined : tag.sharing);
+  const readOnly = !!sharing && (sharing.role === "member" || isDesktop);
   async function run(remove = false) {
     setBusy(true);
     try {
@@ -750,6 +766,7 @@ export function TagEditor({
         <input
           autoFocus
           maxLength={80}
+          disabled={readOnly || busy}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -761,12 +778,13 @@ export function TagEditor({
         aria-checked={type === "checklist"}
         aria-label="Checklist"
         aria-describedby="checklist-setting-description"
-        disabled={busy}
+        disabled={busy || readOnly}
         onClick={() => setType(type === "checklist" ? "standard" : "checklist")}
       >
         <span><strong>Checklist</strong><span id="checklist-setting-description">Check off thoughts with this tag.</span></span>
         <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
       </button>
+      {tag !== "new" && <TagSharingSettings tag={tag} changed={done} close={close} disabled={name !== tag.name || type !== tag.type} stateChanged={state => setSharing(state.collectionId ? { collectionId: state.collectionId, role: state.role ?? "member", status: state.status ?? "waiting" } : undefined)} />}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -779,7 +797,7 @@ export function TagEditor({
         </p>
       )}
       <div className="action-row">
-        {tag !== "new" && (
+        {tag !== "new" && !sharing && (
           <button
             disabled={busy}
             className="secondary danger"
@@ -789,7 +807,7 @@ export function TagEditor({
           </button>
         )}
         <button
-          disabled={busy || !name.trim()}
+          disabled={busy || !name.trim() || readOnly}
           className="primary"
           onClick={() => void run()}
         >

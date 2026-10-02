@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
- <path android:fillColor="#A83E24" android:pathData="M0,0h108v108h-108z"/>
- <path android:fillColor="@android:color/transparent" android:strokeColor="#FAF7F2" android:strokeWidth="4" android:strokeLineCap="round" android:strokeLineJoin="round" android:pathData="M36,31H72Q79,31 79,38V65Q79,72 72,72H46L30,81V38Q30,31 36,31M42,45H66M42,57H58"/>
+  <path android:fillColor="#12303A" android:pathData="M0 0H108V108H0Z"/>
+  <group android:translateX="24.6375" android:translateY="11.424" android:scaleX=".1836" android:scaleY=".1836">
+    <path android:fillColor="#F4E7C7" android:pathData="M54 115 57 72C61 26 101 12 160 12S259 26 263 72L266 115 245 111 242 74C239 43 210 31 160 31S81 43 78 74L75 111Z"/>
+    <path android:fillColor="#F4E7C7" android:pathData="M115 98V80Q160 71 205 81V99Q160 93 115 98Z"/>
+    <path android:fillColor="#F4E7C7" android:pathData="M91 105Q160 92 229 105L241 157Q160 144 79 157Z"/>
+    <path android:fillColor="#F4E7C7" android:pathData="M97 172Q160 161 223 172V193Q160 182 97 193Z"/>
+    <path android:fillColor="#F4E7C7" android:pathData="M63 118Q39 119 37 136L14 352Q12 379 48 403L75 382Q47 367 48 350L77 122Z"/>
+    <path android:fillColor="#F4E7C7" android:pathData="M257 118Q281 120 283 137L306 351Q309 380 272 403L245 382Q274 365 272 349L243 122Z"/>
+    <path android:fillColor="#F4E7C7" android:pathData="M84 384Q160 375 236 384L240 402Q160 395 80 402Z"/>
+    <path android:fillColor="#F4E7C7" android:pathData="M55 416Q77 402 160 404Q245 401 266 416Q293 421 300 447H20Q25 422 55 416Z"/>
+    <path android:fillColor="#D3922E" android:fillType="evenOdd" android:pathData="M158 198C176 223 215 270 224 307C238 356 204 380 167 382C121 387 91 353 95 317C97 282 121 253 158 198Z M148 382C135 353 133 335 145 313C162 286 187 265 186 239C197 280 179 298 164 324C151 347 144 365 148 382Z"/>
+  </group>
 </vector>

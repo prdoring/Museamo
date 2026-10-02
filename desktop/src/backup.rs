@@ -63,7 +63,8 @@ fn export_to(store: &Arc<Mutex<Store>>, destination: &Path) -> Result<()> {
             })
             .collect();
         let media = media?;
-        let manifest = json!({"format":"museamo","version":5,"exportedAt":store::now(),"entries":entries,"tags":db.all("tag")?,"profiles":[],"recovery":recovery,"media":media});
+        let mut manifest = json!({"format":"museamo","version":5,"exportedAt":store::now(),"entries":entries,"tags":db.all("tag")?,"profiles":[],"recovery":recovery,"media":media});
+        db.private_sharing_snapshot(&mut manifest)?;
         (db.root.clone(), manifest, media)
     };
     let bytes = serde_json::to_vec(&manifest).map_err(|e| e.to_string())?;
@@ -389,6 +390,7 @@ fn import_records(db: &mut Store, manifest: &Value, media: &BTreeMap<String, Val
             museamo_sync_core::normalize_tag(t["name"].as_str().unwrap_or_default())
                 == museamo_sync_core::normalize_tag(name)
                 && t["type"].as_str().unwrap_or("standard") == kind
+                && db.sharing_metadata(t["id"].as_str().unwrap_or("")).ok().flatten().is_none()
         });
         let next = if let Some(t) = existing {
             string(&t, "id")?.to_owned()

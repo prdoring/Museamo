@@ -27,3 +27,9 @@ android/app/src/main/jniLibs/
 desktop/icons/*
 !desktop/icons/icon.ico
 !desktop/icons/icon.png
+releases/
+output/
+artifacts-*.png
+*.p12
+*.pfx
+*.pem

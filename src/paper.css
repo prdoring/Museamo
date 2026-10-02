@@ -1,10 +1,4 @@
 @font-face {
-  font-family: "Trailhead Clean";
-  src: url("/fonts/VSTrailhead-Clean.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
   font-family: "Source Serif 4";
   src: url("/fonts/SourceSerif4-Regular.otf.woff2") format("woff2");
   font-weight: 400;
@@ -17,7 +11,7 @@
   font-display: swap;
 }
 :root {
-  --font-heading: "Trailhead Clean", "DM Sans", sans-serif;
+  --font-heading: "DM Sans", sans-serif;
   --font-writing: "Source Serif 4", serif;
   --paper-shading: url("./assets/wpa/textures/construction-paper-shading.webp");
   --ink-shading: url("./assets/wpa/textures/construction-paper-ink-shading.webp");
@@ -46,7 +40,7 @@ main::before {
   opacity: var(--reading-grain-opacity);
   pointer-events: none;
 }
-h1, h2 { font-family: var(--font-heading); font-weight: 400; letter-spacing: .035em; }
+h1, h2 { font-family: var(--font-heading); font-weight: 650; letter-spacing: .015em; }
 h1 { font-size: 24px; text-transform: uppercase; }
 h2, .settings h2, .sheet-heading h2 { font-size: 22px; }
 .dynamic-title { font-family: "DM Sans", sans-serif; text-transform: none; font-size: 20px; font-weight: 650; letter-spacing: -.025em; }

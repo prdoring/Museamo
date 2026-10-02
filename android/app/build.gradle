@@ -2,6 +2,10 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 apply plugin: 'org.jetbrains.kotlin.kapt'
 
+// Release secrets stay on the build machine, never in source or CI settings.
+def releaseSigning = ['MUSEAMO_KEYSTORE', 'MUSEAMO_KEY_ALIAS', 'MUSEAMO_STORE_PASSWORD', 'MUSEAMO_KEY_PASSWORD']
+def hasReleaseSigning = releaseSigning.every { System.getenv(it) }
+
 android {
     namespace = "com.prdoring.museamo"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -18,8 +22,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            localRelease {
+                storeFile file(System.getenv('MUSEAMO_KEYSTORE'))
+                keyAlias System.getenv('MUSEAMO_KEY_ALIAS')
+                storePassword System.getenv('MUSEAMO_STORE_PASSWORD')
+                keyPassword System.getenv('MUSEAMO_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasReleaseSigning) signingConfig signingConfigs.localRelease
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -33,6 +48,13 @@ android {
 }
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
 
+// Never silently produce an unsigned release APK.
+gradle.taskGraph.whenReady { graph ->
+    if (graph.allTasks.any { it.project == project && it.name == 'assembleRelease' } && !hasReleaseSigning) {
+        throw new GradleException('Set MUSEAMO_KEYSTORE, MUSEAMO_KEY_ALIAS, MUSEAMO_STORE_PASSWORD, and MUSEAMO_KEY_PASSWORD for a signed release. See docs/releases.md.')
+    }
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
@@ -40,6 +62,7 @@ repositories {
 }
 
 dependencies {
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     // Align transitive legacy jdk7/jdk8 artifacts with the compiler's stdlib.
     implementation platform('org.jetbrains.kotlin:kotlin-bom:2.2.10')
     implementation 'org.jsoup:jsoup:1.21.2'

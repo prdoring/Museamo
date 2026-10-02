@@ -33,11 +33,10 @@ Native utility geometry is adapted into `drawable/paper_*.xml`. Existing search,
 
 ## Fonts
 
-- `VSTrailhead-Clean.woff2`: full source from `fonts/VS TrailHead/VS Trailhead-Clean/`; native `trailhead_clean.otf` is the companion original OTF.
 - `SourceSerif4-Regular.otf.woff2` and `SourceSerif4-Semibold.otf.woff2`: full official source assets from `fonts/SourceSerif4/`, not the portfolio's generated subsets. Native OTF files were decompressed with fontTools without changing glyphs.
-- Existing DM Sans remains the UI font.
+- DM Sans is the UI and heading font; Android uses the bundled `dm_sans.ttf` with bold headings.
 
-Source Serif's SIL OFL and the supplied Trailhead personal-use notice are preserved in `public/fonts/`. The Trailhead notice restricts redistribution; this local implementation does not establish public-distribution rights. No assets have been published by this task.
+The SIL Open Font License notices for Source Serif 4 and DM Sans are preserved in `public/fonts/`. Trailhead was removed from distributable source and binaries during public-release preparation because its supplied personal-use notice prohibited sharing the asset. Original files are retained only in the ignored local `output/licensing/` folder. Older verification screenshots may show the previous headings.
 
 ## Deliberate exclusions
 
