@@ -46,6 +46,8 @@ Remove-Item Env:MUSEAMO_KEYSTORE, Env:MUSEAMO_KEY_ALIAS
 
 Partial overrides are rejected rather than mixed with saved credentials. If a previously configured key is missing or cannot be decrypted, restore the original key; generating a replacement would prevent existing users from receiving ordinary updates. The Gradle release build refuses an unsigned APK. See [Android's signing documentation](https://developer.android.com/studio/publish/app-signing) and [Microsoft's DPAPI documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/convertfrom-securestring).
 
+Run signing setup, backup, and releases under the same Windows account. Use `whoami` to check the terminal's account. A Codex sandbox account cannot read a key protected for your normal Windows account; run these commands in your normal Windows terminal. The helper reports the account and configuration path when a configuration is missing or inaccessible. Do not create a replacement key or loosen its permissions to work around a different account.
+
 To preserve compatibility with current debug-key installations, choose `--android debug`. It builds a debug-signed APK with optimized Rust libraries and automatically marks the GitHub release as a **prerelease**. Keep using the same PC's debug keystore for updates; a newly generated debug key will not match existing installations. Never distribute your private keystore.
 
 Changing from a debug key to a release key prevents an ordinary in-place update. Export the saved library first. Drafts are not in the export. Keep the original app installed until you have a verified backup.

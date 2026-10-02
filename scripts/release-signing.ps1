@@ -10,6 +10,7 @@ $signingNames = @('MUSEAMO_KEYSTORE', 'MUSEAMO_KEY_ALIAS', 'MUSEAMO_STORE_PASSWO
 $signingDirectory = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Museamo/release-signing'
 $configPath = Join-Path $signingDirectory 'signing.json'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$windowsAccount = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 function Protect-Directory([string]$Directory) {
     $null = New-Item -ItemType Directory -Path $Directory -Force
@@ -31,7 +32,8 @@ function Protect-Password([string]$Value) {
 }
 
 function Unprotect-Password([string]$Value) {
-    $secure = ConvertTo-SecureString -String $Value
+    try { $secure = ConvertTo-SecureString -String $Value }
+    catch { throw "The saved signing password cannot be decrypted by Windows account $windowsAccount. Use the account that created this key, or restore your portable signing backup on this Windows installation." }
     $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
     finally {
@@ -40,9 +42,27 @@ function Unprotect-Password([string]$Value) {
     }
 }
 
+function Read-SavedConfiguration([switch]$AllowMissing) {
+    # Test-Path can report false for a protected file. Read it directly to
+    # distinguish a missing configuration from a different account's access.
+    try { $savedText = [IO.File]::ReadAllText($configPath) }
+    catch [UnauthorizedAccessException] {
+        throw "Windows account $windowsAccount cannot read $configPath. Run this command in a terminal under the Windows account that created the signing key. Do not replace the existing key."
+    }
+    catch [IO.FileNotFoundException] {
+        if ($AllowMissing) { return $null }
+        throw "No saved signing configuration at $configPath for Windows account $windowsAccount. Run npm run release:signing in this terminal once."
+    }
+    catch [IO.DirectoryNotFoundException] {
+        if ($AllowMissing) { return $null }
+        throw "No saved signing configuration at $configPath for Windows account $windowsAccount. Run npm run release:signing in this terminal once."
+    }
+    try { return $savedText | ConvertFrom-Json }
+    catch { throw "Saved signing configuration at $configPath is invalid. Restore the original configuration or your portable signing backup." }
+}
+
 function Read-SavedSigning {
-    if (!(Test-Path -LiteralPath $configPath -PathType Leaf)) { throw 'No saved signing configuration. Run npm run release:signing.' }
-    $saved = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    $saved = Read-SavedConfiguration
     if ($saved.schema -ne 1 -or !$saved.keystore -or !$saved.alias -or !$saved.storePassword -or !$saved.keyPassword) { throw 'Saved signing configuration is incomplete. Restore it from backup.' }
     return @{
         schema = 1
@@ -125,7 +145,8 @@ try {
         Write-Output "Alias: $($backup.MUSEAMO_KEY_ALIAS). Keep this backup and its password private."
         exit 0
     }
-    if (Test-Path -LiteralPath $configPath -PathType Leaf) {
+    $existingConfiguration = Read-SavedConfiguration -AllowMissing
+    if ($existingConfiguration) {
         $signing = Read-SavedSigning
     } elseif ($Action -eq 'check') {
         throw 'No saved signing configuration. Run npm run release:signing.'
