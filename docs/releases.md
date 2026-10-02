@@ -10,16 +10,41 @@ Run `npm run release:setup` to install the repository's local pre-push guard. It
 
 ## Android signing
 
-Public stable APKs need a dedicated signing key. Keep the keystore and its backup outside the repository, and reuse it for every update. Create or select it in Android Studio's **Generate Signed Bundle / APK** flow, then provide these variables only in your local build shell:
+Public stable APKs need a dedicated signing key. On Windows, set it up once:
+
+```sh
+npm run release:signing
+```
+
+With no signing variables set, this creates a 4096-bit RSA key valid for 10,000 days in `%LOCALAPPDATA%\Museamo\release-signing\museamo-release.p12`. The keystore password is randomly generated and saved in `signing.json` using Windows account encryption (DPAPI). Access to the directory is restricted to your account, administrators, and SYSTEM. These files stay outside the repository. Repeating setup verifies the existing key; it never replaces it.
+
+`npm run release` and signed `release:build` commands load the saved key automatically. Passwords are passed to build tools only in their process environment, never in command-line arguments, release manifests, or GitHub secrets.
+
+Create a portable recovery backup before publishing:
+
+```sh
+npm run release:signing:backup
+```
+
+The backup command asks for a new `.p12` path outside the repository and a password of at least 12 characters, entered without displaying it. It exports the same signing identity under that password and verifies the certificate and private-key access. Keep the backup on separate protected storage and its password in your password manager. The local `signing.json` alone cannot recover your password on a new Windows installation. Never distribute your private keystore.
+
+If you already have a release key, set all four variables below in your local shell before running `release:signing` on an unconfigured PC. It saves your existing key's configuration instead of creating a new identity. You can also provide all four variables to override the saved configuration for a build:
 
 ```powershell
 $env:MUSEAMO_KEYSTORE = 'C:\path\outside\repo\museamo-release.jks'
 $env:MUSEAMO_KEY_ALIAS = 'your-key-alias'
-# Set MUSEAMO_STORE_PASSWORD and MUSEAMO_KEY_PASSWORD securely in this shell.
-# Do not put their values in committed scripts, command history, or GitHub secrets.
+$storePassword = Read-Host 'Keystore password' -AsSecureString
+$keyPassword = Read-Host 'Key password' -AsSecureString
+$env:MUSEAMO_STORE_PASSWORD = [System.Net.NetworkCredential]::new('', $storePassword).Password
+$env:MUSEAMO_KEY_PASSWORD = [System.Net.NetworkCredential]::new('', $keyPassword).Password
+npm run release:signing
+$storePassword.Dispose()
+$keyPassword.Dispose()
+Remove-Item Env:MUSEAMO_STORE_PASSWORD, Env:MUSEAMO_KEY_PASSWORD
+Remove-Item Env:MUSEAMO_KEYSTORE, Env:MUSEAMO_KEY_ALIAS
 ```
 
-The Gradle release build refuses an unsigned APK. These variables are read from the environment; they are never passed as command-line arguments or written into the release manifest. See [Android's signing documentation](https://developer.android.com/studio/publish/app-signing).
+Partial overrides are rejected rather than mixed with saved credentials. If a previously configured key is missing or cannot be decrypted, restore the original key; generating a replacement would prevent existing users from receiving ordinary updates. The Gradle release build refuses an unsigned APK. See [Android's signing documentation](https://developer.android.com/studio/publish/app-signing) and [Microsoft's DPAPI documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/convertfrom-securestring).
 
 To preserve compatibility with current debug-key installations, choose `--android debug`. It builds a debug-signed APK with optimized Rust libraries and automatically marks the GitHub release as a **prerelease**. Keep using the same PC's debug keystore for updates; a newly generated debug key will not match existing installations. Never distribute your private keystore.
 

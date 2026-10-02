@@ -4,6 +4,34 @@ import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { options, assertVersions, assetNames, sha256, verifyBundle } from "./release.mjs";
+import { configureSigning, signingSource } from "./release-signing.mjs";
+
+test("signing loads saved credentials and preserves complete explicit overrides", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "museamo-signing-test-"));
+  try {
+    const keystore = path.join(directory, "fixture.p12");
+    await writeFile(keystore, "not a real key");
+    const saved = { schema: 1, MUSEAMO_KEYSTORE: keystore, MUSEAMO_KEY_ALIAS: "fixture", MUSEAMO_STORE_PASSWORD: "test-only", MUSEAMO_KEY_PASSWORD: "test-only" };
+    const env = {};
+    await configureSigning(env, () => saved);
+    assert.equal(env.MUSEAMO_KEYSTORE, keystore);
+    assert.equal(env.MUSEAMO_KEY_ALIAS, "fixture");
+    await configureSigning(env, () => { throw new Error("complete overrides must not read saved credentials"); });
+    assert.equal(signingSource({}), "saved");
+    assert.equal(signingSource(env), "environment");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("signing refuses partial overrides, malformed saved credentials, and lost keys", async () => {
+  assert.throws(() => signingSource({ MUSEAMO_KEYSTORE: "existing.p12" }), /Incomplete Android signing override/);
+  await assert.rejects(configureSigning({}, () => ({ schema: 1 })), /Invalid saved signing configuration/);
+  await assert.rejects(configureSigning({}, () => ({ schema: 2 })), /Invalid saved signing configuration/);
+  const directory = await mkdtemp(path.join(tmpdir(), "museamo-missing-key-test-"));
+  try {
+    const env = { MUSEAMO_KEYSTORE: path.join(directory, "missing.p12"), MUSEAMO_KEY_ALIAS: "fixture", MUSEAMO_STORE_PASSWORD: "test-only", MUSEAMO_KEY_PASSWORD: "test-only" };
+    await assert.rejects(configureSigning(env), /Restore your key backup/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 test("debug builds are prereleases and dirty builds cannot enter the push command", () => {
   assert.equal(options(["push", "--android", "debug"]).prerelease, true);

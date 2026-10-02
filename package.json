@@ -23,6 +23,8 @@
     "release:publish": "node scripts/release.mjs publish",
     "release:check": "node scripts/release.mjs check",
     "release:setup": "node scripts/release.mjs setup",
+    "release:signing": "node scripts/release.mjs signing",
+    "release:signing:backup": "node scripts/release.mjs signing-backup",
     "test:release": "node --test scripts/release.test.mjs"
   },
   "dependencies": {

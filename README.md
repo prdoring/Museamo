@@ -147,7 +147,7 @@ npm run test:release
 cargo test --workspace
 ```
 
-**Release builds happen locally on Windows.** After configuring signing and committing a version, `npm run release` tests and builds the APK, Windows installer, standalone EXE, and source archive, then pushes the source/tag and publishes the downloads to GitHub Releases. [Release setup and commands](docs/releases.md)
+**Release builds happen locally on Windows.** Run `npm run release:signing` once to create and securely save the Android signing key on your PC. After committing a version, `npm run release` loads that key, tests and builds the APK, Windows installer, standalone EXE, and source archive, then pushes the source/tag and publishes the downloads to GitHub Releases. [Release setup, signing backup, and commands](docs/releases.md)
 
 GitHub Actions validates changes and retains test reports. It does not publish release binaries.
 

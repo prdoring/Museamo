@@ -19,8 +19,20 @@ The generated bundle under ignored `releases/0.4.0/` includes the Android APK, W
 ## Remaining before public distribution
 
 - Confirm or remove the restricted Trailhead assets in old Git history; current-tree removal does not remove historical copies.
-- Choose and retain the Android signing identity. Current test builds use the existing local debug key; stable releases require a dedicated key supplied locally.
+- Create and retain a portable backup of the configured Android release key with `npm run release:signing:backup`. Current debug installations still require the original debug key for ordinary in-place updates.
 - Smoke-test the installer and APK on disposable devices, including launcher, Wi-Fi/firewall, background sync, and media behavior. Connected-device instrumentation was not rerun for this documentation/release-tooling change.
 - Review source and asset provenance, commit the intended release, then publish through the local release command.
 
 See [release instructions](releases.md) and [licensing](licensing.md). Local diagnostic logs live under ignored `artifacts/`.
+
+## Signing setup follow-up
+
+Also verified on October 2, 2026:
+
+- A permanent 4096-bit RSA release key was created outside the repository, with its generated password protected by Windows account encryption. Directory permissions allow the owner, administrators, and SYSTEM only.
+- Automatic credential loading worked without manual signing variables. Repeating setup retained the same certificate fingerprint. All 5 release-tooling tests passed, including saved credential loading, explicit overrides, partial overrides, malformed configuration, and lost keys.
+- `:app:assembleRelease -PsyncCoreRelease` succeeded with `--no-daemon`. APK signature verification passed, the certificate matched the configured release key, and all four Android native libraries were present.
+- The backup command exported the same signing identity under a different password and verified private-key access. This used a temporary test backup that was deleted immediately; the maintainer still needs a retained recovery backup.
+- Release builds now use a fresh Gradle process to avoid reusing a development daemon with different key-access permissions or retaining credentials in that daemon.
+
+No source push or release upload was performed during this signing fix. The existing `releases/0.4.0/` preview remains unchanged; use `npm run release` to create and publish a fresh bundle from the clean commit.

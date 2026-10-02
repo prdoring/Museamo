@@ -4,14 +4,14 @@ import { createReadStream } from "node:fs";
 import { readFile, writeFile, mkdir, copyFile, readdir, stat, access } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+import { configureSigning, signingCommand } from "./release-signing.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const target = "x86_64-pc-windows-msvc";
-const signingVariables = ["MUSEAMO_KEYSTORE", "MUSEAMO_KEY_ALIAS", "MUSEAMO_STORE_PASSWORD", "MUSEAMO_KEY_PASSWORD"];
 
 export function options(argv) {
   const [command = "check", ...args] = argv;
-  if (!["check", "build", "push", "publish", "setup"].includes(command)) throw new Error("Use check, build, push, publish, or setup.");
+  if (!["check", "build", "push", "publish", "setup", "signing", "signing-backup"].includes(command)) throw new Error("Use check, build, push, publish, setup, signing, or signing-backup.");
   const result = { command, android: "release", allowDirty: false, prerelease: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--android") result.android = args[++i];
@@ -100,8 +100,7 @@ export async function verifyBundle(directory, manifest, source) {
 async function build(opts, info, source) {
   if (process.platform !== "win32" || process.arch !== "x64") throw new Error("Build releases locally on x64 Windows.");
   if (!process.env.ANDROID_HOME || !process.env.JAVA_HOME) throw new Error("Set ANDROID_HOME and JAVA_HOME (JDK 21). See docs/development.md.");
-  if (opts.android === "release" && signingVariables.some(name => !process.env[name])) throw new Error(`Set ${signingVariables.join(", ")} or choose --android debug for a test prerelease.`);
-  if (opts.android === "release") await access(process.env.MUSEAMO_KEYSTORE);
+  if (opts.android === "release") await configureSigning();
   const npmCli = process.env.npm_execpath;
   if (!npmCli) throw new Error("Run this command through npm run release or npm run release:build.");
   const npm = (...args) => run(process.execPath, [npmCli, ...args]);
@@ -115,7 +114,9 @@ async function build(opts, info, source) {
   run("cargo", ["test", "--workspace", "--locked", "--", "--test-threads=1"]);
   npm("run", "android:sync");
   const variant = opts.android === "debug" ? "Debug" : "Release";
-  run("cmd.exe", ["/d", "/c", "gradlew.bat", `:app:assemble${variant}`, ":app:testDebugUnitTest", ":app:lintDebug", "-PsyncCoreRelease"], { cwd: path.join(root, "android") });
+  // Use a fresh Gradle process so it shares this account's key access and does
+  // not retain signing credentials in a reusable development daemon.
+  run("cmd.exe", ["/d", "/c", "gradlew.bat", "--no-daemon", `:app:assemble${variant}`, ":app:testDebugUnitTest", ":app:lintDebug", "-PsyncCoreRelease"], { cwd: path.join(root, "android") });
   npm("run", "desktop:build", "--", "--target", target);
   const after = await sourceState(opts.allowDirty);
   if (after.commit !== source.commit || (!source.dirty && after.dirty)) throw new Error("Source changed during the build. Commit the changes and rebuild.");
@@ -177,6 +178,10 @@ async function publish(info, source) {
 
 async function main() {
   const opts = options(process.argv.slice(2));
+  if (opts.command === "signing" || opts.command === "signing-backup") {
+    signingCommand(opts.command === "signing" ? "setup" : "backup");
+    return;
+  }
   if (opts.command === "setup") {
     const current = spawnSync("git", ["config", "--get", "core.hooksPath"], { cwd: root, encoding: "utf8" });
     if (current.status === 0 && current.stdout.trim() !== ".githooks") throw new Error("An existing hooksPath is configured. Merge the Museamo pre-push hook into it manually; it will not be overwritten.");
