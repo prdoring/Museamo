@@ -33,16 +33,17 @@ class CaptureFlowTest {
         assertNotNull("The native composer must commit the draft within five seconds", saved)
         return saved!!
     }
-    private fun sendThought() {
-        // IME animation can move a synthetic touch away from Send; this test checks the native listener and commit.
-        onView(withContentDescription("Send thought")).perform(object : androidx.test.espresso.ViewAction {
+    private fun clickControl(description: String) {
+        // IME animation can move a synthetic touch; these lifecycle tests check native listeners.
+        onView(withContentDescription(description)).perform(object : androidx.test.espresso.ViewAction {
             override fun getConstraints() = org.hamcrest.Matchers.allOf(isDisplayed(), isEnabled())
-            override fun getDescription() = "Send through the native button listener"
+            override fun getDescription() = "Activate $description through the native button listener"
             override fun perform(controller: androidx.test.espresso.UiController, view: android.view.View) {
                 assertTrue(view.performClick()); controller.loopMainThreadUntilIdle()
             }
         })
     }
+    private fun sendThought() = clickControl("Send thought")
     @Test fun newlyOpenedBlankComposerDoesNotReuseAnOldCapturedLocation() {
         val oldLocation = PostLocation.parse(JSONObject().put("latitude", 39.7392).put("longitude", -104.9903)
             .put("capturedAt", 1790274033367L).put("token", uid()).put("locality", "Denver"))!!
@@ -85,11 +86,12 @@ class CaptureFlowTest {
                 java.io.File(context.getExternalFilesDir(null), "capture.png").outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
             }
             onView(withContentDescription("Thought text")).perform(replaceText(text), closeSoftKeyboard())
-            onView(withContentDescription("Send thought")).perform(click())
+            val entryId = repository { repo -> repo.dao.draft(profile.id)!!.entryId }
+            sendThought()
             settle()
-            val entries = repository { repo -> repo.dao.query(text, false, "", 10, 0) }
-            assertEquals(1, entries.size); assertEquals(profile.tagIds, entries.single().tagIds)
-            assertFalse(entries.single().completed)
+            val saved = awaitEntry(entryId)
+            assertEquals(text, saved.text); assertEquals(profile.tagIds, saved.tagIds)
+            assertFalse(saved.completed)
             assertNull(repository { repo -> repo.dao.draft(profile.id) })
         }
     }
@@ -121,7 +123,7 @@ class CaptureFlowTest {
             scenario.recreate(); settle()
             assertEquals("Recreation of the current blank compose must retain its location", raw, repository { it.dao.draft(profile.id)!!.location })
             androidx.test.espresso.Espresso.closeSoftKeyboard()
-            onView(withContentDescription("Post location")).perform(click())
+            clickControl("Post location")
             onView(withText("Remove location")).perform(click())
             settle()
             scenario.recreate(); settle()

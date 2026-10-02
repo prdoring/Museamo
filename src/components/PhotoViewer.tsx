@@ -18,6 +18,7 @@ export function PhotoViewer({ images, initial, close }: { images: (Attachment | 
   const [url, setUrl] = useState("");
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
+  const resolvedImage = useRef<string | undefined>(undefined);
   const [transform, setTransform] = useState(identity);
   const current = useRef(identity);
   const stage = useRef<HTMLDivElement>(null);
@@ -26,8 +27,8 @@ export function PhotoViewer({ images, initial, close }: { images: (Attachment | 
   const pointers = useRef(new Map<number, Point>());
   const gesture = useRef({ start: identity, points: [] as Point[], swiping: false });
   const lastTap = useRef({ time: 0, point: { x: 0, y: 0 } });
-  const callbacks = useRef({ close, index });
-  callbacks.current = { close: exiting ? () => {} : close, index };
+  const callbacks = useRef({ close, index, exiting });
+  callbacks.current = { close: exiting ? () => {} : close, index, exiting };
   function update(value: Transform) { current.current = value; setTransform(value); }
   function bounded(value: Transform): Transform {
     const area = stage.current, img = picture.current;
@@ -42,15 +43,19 @@ export function PhotoViewer({ images, initial, close }: { images: (Attachment | 
     update(current.current.scale > 1 ? identity : bounded({ scale: 2.5, x: -(point.x - area.left - area.width / 2) * 1.5, y: -(point.y - area.top - area.height / 2) * 1.5 }));
   }
   useEffect(() => {
+    const image = images[index];
+    const imageKey = "id" in image ? image.id : image.url;
+    // Refreshes can replace metadata objects while this same photo is open.
+    if (resolvedImage.current === imageKey) return;
+    resolvedImage.current = undefined;
     let alive = true;
     setUrl(""); setReady(false); setError(""); update(identity); lastTap.current.time = 0;
-    const image = images[index];
     void ("id" in image ? bridge.resolveMedia({ id: image.id }) : Promise.resolve({ url: image.url, availability: undefined }))
       .then(result => {
         if (!alive) return;
         if (result.availability === "pending") setError("The original is waiting to sync from a linked device.");
         else if (result.availability === "unsupported") setError("This device cannot preview this format. The original stays in your library and backups.");
-        else setUrl(result.url);
+        else { resolvedImage.current = imageKey; setUrl(result.url); }
       }).catch(() => { if (alive) setError("This photo is unavailable."); });
     return () => { alive = false; };
   }, [index, images]);
@@ -60,6 +65,7 @@ export function PhotoViewer({ images, initial, close }: { images: (Attachment | 
     const back = (event?: Event) => { event?.preventDefault(); callbacks.current.close(); };
     const resize = () => update(identity);
     const key = (e: KeyboardEvent) => {
+      if (callbacks.current.exiting || (document.activeElement as HTMLElement | null)?.closest(".window-controls")) return;
       if (e.key === "Escape") back();
       if (e.key === "ArrowRight") setIndex(i => Math.min(images.length - 1, i + 1));
       if (e.key === "ArrowLeft") setIndex(i => Math.max(0, i - 1));
@@ -77,7 +83,7 @@ export function PhotoViewer({ images, initial, close }: { images: (Attachment | 
       unlock();
     };
   }, [images.length]);
-  return createPortal(<div className="photo-lightbox" data-exiting={exiting} inert={exiting} role="dialog" aria-modal="true" aria-label="Photo viewer" tabIndex={-1} ref={dialog}>
+  return createPortal(<div className="photo-lightbox" data-exiting={exiting} inert={exiting} aria-hidden={exiting || undefined} role="dialog" aria-modal="true" aria-label="Photo viewer" tabIndex={-1} ref={dialog}>
     <header className="photo-lightbox-header"><span aria-live="polite">{index + 1} / {images.length}</span><button aria-label="Close photo viewer" onClick={close}><X size={24} /></button></header>
     <div className="photo-stage" data-dragging={dragging} ref={stage}
       onPointerDown={e => {

@@ -16,6 +16,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 class CaptureActivity : NativeScreen() {
+    override fun dismissSurface() { if (!committing) finish() }
     private lateinit var locationButton: Button
     private lateinit var locationStatus: TextView
     private var findingLocation = false
@@ -228,11 +229,13 @@ class CaptureActivity : NativeScreen() {
         body.removeView(heading)
         val composer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         (contentScroll.parent as? android.view.ViewGroup)?.removeView(contentScroll)
+        // The API 26 host decorated this scroll view; only the final composer needs a frame.
+        contentScroll.background = null
         composer.addView(heading, LinearLayout.LayoutParams(-1, -2).apply { marginStart = dp(16); marginEnd = dp(16); topMargin = dp(8) })
         composer.addView(View(this).apply { setBackgroundColor(color(R.color.widget_text)) }, LinearLayout.LayoutParams(-1, dp(2)).apply { marginStart = dp(16); marginEnd = dp(16) })
         composer.addView(contentScroll, LinearLayout.LayoutParams(-1, -2, 1f))
         composer.addView(actions, LinearLayout.LayoutParams(-1, -2).apply { marginStart = dp(16); marginEnd = dp(16); bottomMargin = dp(16) })
-        setContentView(composer)
+        installSurfaceContent(composer)
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(composer) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left, 0, bars.right, if (insets.isVisible(WindowInsetsCompat.Type.ime())) 0 else bars.bottom)
@@ -273,26 +276,35 @@ class CaptureActivity : NativeScreen() {
         work({ repo -> ids(current.mediaIds).mapNotNull { repo.dao.media(it) }.map { row ->
             row to android.graphics.BitmapFactory.decodeFile(MediaFiles(this, repo).thumbnail(row.id).path)
         } }) { items ->
-            mediaStrip.removeAllViews()
-            items.forEach { (item, bitmap) ->
+            // Ignore an older thumbnail result if attachments changed while it was decoded.
+            if (current.mediaIds != draft?.mediaIds) return@work
+            NativeMotion.reconcile(mediaStrip, items.map { it.first.id }, { id ->
+                val (item, bitmap) = items.first { it.first.id == id }
                 val panel = FrameLayout(this)
                 panel.addView(ImageView(this).apply { setImageBitmap(bitmap); contentDescription = item.filename; scaleType = ImageView.ScaleType.CENTER_CROP; background = PaperSurface(this@CaptureActivity, reading = true, radiusDp = 8f); clipToOutline = true }, FrameLayout.LayoutParams(-1, -1))
                 if (item.kind == "video") panel.addView(TextView(this).apply { text = "Video"; textSize = 11f; setTextColor(android.graphics.Color.WHITE); setBackgroundColor(0x99000000.toInt()); setPadding(dp(4), dp(2), dp(4), dp(2)) }, FrameLayout.LayoutParams(-2, -2, android.view.Gravity.BOTTOM or android.view.Gravity.START))
                 panel.addView(button("×") {
                     if (!committing && !importingMedia) { draft = draft?.copy(mediaIds = jsonIds(ids(draft!!.mediaIds) - item.id)); persist(); refreshMedia() }
                 }.apply { contentDescription = "Remove "+item.filename; isEnabled = !committing && !importingMedia; textSize = 24f; minWidth = 0; minimumWidth = 0; setPadding(0, 0, 0, 0); setTextColor(android.graphics.Color.WHITE); background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(0xBB000000.toInt()) } }, FrameLayout.LayoutParams(dp(44), dp(44), android.view.Gravity.TOP or android.view.Gravity.END))
-                mediaStrip.addView(panel, LinearLayout.LayoutParams(dp(88), dp(88)).apply { marginEnd = dp(8); topMargin = dp(8); bottomMargin = dp(8) })
-            }
+                panel.layoutParams = LinearLayout.LayoutParams(dp(88), dp(88)).apply { marginEnd = dp(8); topMargin = dp(8); bottomMargin = dp(8) }
+                panel
+            }, { panel, _ -> (panel as FrameLayout).getChildAt(panel.childCount - 1).isEnabled = !committing && !importingMedia })
         }
     }
     private fun refreshSuggestions() {
         if (!::input.isInitialized || committing) return
-        suggestions.removeAllViews()
         val token = Hashtags.active(input.text.toString(), input.selectionStart)
-        suggestionScroll.visibility = if (token == null) View.GONE else View.VISIBLE
+        NativeMotion.show(suggestionScroll, token != null)
         if (token == null) return
-        tags.filter { it.name.startsWith(token.query, true) }.take(8).forEach { tag -> suggestions.addView(button(android.text.TextUtils.concat("# ", tag.displayLabel(this))) { complete(tag.name, token) }.apply { contentDescription = tag.accessibleLabel() }) }
-        if (token.query.isNotBlank() && tags.none { it.name.equals(token.query.trim(), true) }) suggestions.addView(button("Use new tag “${token.query.trim()}”") { complete(token.query.trim(), token) })
+        val matches = tags.filter { it.name.startsWith(token.query, true) }.take(8)
+        val keys = matches.map { it.id } + if (token.query.isNotBlank() && tags.none { it.name.equals(token.query.trim(), true) }) listOf("new") else emptyList()
+        NativeMotion.reconcile(suggestions, keys, { button("") {} }, { view, id ->
+            val control = view as Button
+            val tag = matches.find { it.id == id }
+            control.text = if (tag == null) "Use new tag “${token.query.trim()}”" else android.text.TextUtils.concat("# ", tag.displayLabel(this))
+            control.contentDescription = tag?.accessibleLabel() ?: control.text
+            control.setOnClickListener { complete(tag?.name ?: token.query.trim(), token) }
+        }, animate = false)
     }
     private fun complete(name: String, token: Hashtags.Token) {
         if (committing) return
@@ -300,21 +312,25 @@ class CaptureActivity : NativeScreen() {
         input.text?.replace(token.start, token.end, value); input.setSelection(token.start + value.length); input.requestFocus()
     }
     private fun updateChips() {
-        chips.removeAllViews()
         val explicit = ids(draft?.tagIds ?: "[]")
         val inline = Hashtags.names(input.text.toString())
         val names = (tags.filter { it.id in explicit }.map { it.name } + inline).distinctBy { it.lowercase(java.util.Locale.ROOT) }
-        names.forEach { name ->
+        NativeMotion.reconcile(chips, names, { button("") {}.apply { layoutParams = LinearLayout.LayoutParams(-2, dp(48)).apply { marginEnd = dp(4) } } }, { view, name ->
+            val control = view as Button
             val displayTag = tags.find { it.name.equals(name, true) }
-            chips.addView(button(android.text.TextUtils.concat("# ", displayTag?.displayLabel(this, R.color.widget_selection_text) ?: name)) {
+            control.text = android.text.TextUtils.concat("# ", displayTag?.displayLabel(this, R.color.widget_selection_text) ?: name)
+            control.setOnClickListener {
             if (!committing) {
                 val tag = tags.find { it.name.equals(name, true) }
                 draft = draft?.copy(tagIds = jsonIds(explicit - listOfNotNull(tag?.id)))
                 val position = input.selectionStart
                 input.removeHashtag(name); input.setSelection(position.coerceIn(0, input.length())); updateChips(); persist()
             }
-        }.apply { contentDescription = "Remove tag ${displayTag?.accessibleLabel() ?: name}"; selected(this); glyph(this, R.drawable.paper_close, R.color.widget_selection_text); isEnabled = !committing }, LinearLayout.LayoutParams(-2, dp(48)).apply { marginEnd = dp(4) }) }
-        (chips.parent as View).visibility = if (names.isEmpty()) View.GONE else View.VISIBLE
+            }
+            control.contentDescription = "Remove tag ${displayTag?.accessibleLabel() ?: name}"
+            selected(control); glyph(control, R.drawable.paper_close, R.color.widget_selection_text); control.isEnabled = !committing
+        })
+        NativeMotion.show(chips.parent as View, names.isNotEmpty())
     }
     private fun chooseTags() {
         if (committing || selecting) return

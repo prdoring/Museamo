@@ -1,4 +1,4 @@
-import { Presence } from "./Motion";
+import { Presence, MotionList } from "./Motion";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { bridge } from "../data";
 import { mediaLinks, type Attachment, type MediaLink } from "../media";
@@ -107,12 +107,10 @@ export function AttachmentEditor({ attachments, disabled, change, report, import
   }
   return <div className="attachment-editor">
     {toolbar && createPortal(<button className="composer-icon" type="button" aria-label="Attach photos/videos" title="Attach photos/videos" disabled={disabled || attachments.length >= 10} onClick={() => void pick()}><ImagePlus size={22} /></button>, toolbar)}
-    <div className="attachment-rail">
-      {attachments.map(a => <div className="attachment-tile" key={a.id}>
+    <MotionList className="attachment-rail" scope="attachments" items={attachments.map(a => ({ key: a.id, content: <div className="attachment-tile">
         <AttachmentThumbnail attachment={a} />
         <button className="attachment-remove" type="button" disabled={disabled} aria-label={`Remove ${a.filename}`} onClick={() => change(attachments.filter(item => item.id !== a.id))}><X size={17} /></button>
-      </div>)}
-    </div>
+      </div> }))} />
   </div>;
 }
 function AttachmentThumbnail({ attachment }: { attachment: Attachment }) {

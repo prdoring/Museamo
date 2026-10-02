@@ -52,6 +52,8 @@ See the [verification record](docs/verification.md) and [companion verification]
 
 The app now uses a compact private feed, a bottom capture bar, explicit post actions, searchable tags with counts, and independent Undo notifications. Browser preview supports capture, editing, tags, stars, drafts, and simulated failures in memory; it never writes Android data.
 
+Windows uses a continuous sidebar, an integrated header with custom window controls, a centered reading column, centered composition, and anchored post menus. Ctrl+N opens capture; Ctrl+F opens search. Preview the desktop layout using the preview's layout switch or `?previewLayout=desktop`. Functional transitions preserve keyed posts/media, reading position, and independent Undo, and respond immediately to reduced motion. Android app pages, native capture, tag picking, and widget setup stay in upright portrait; Android 8 uses an opaque bottom-aligned capture host. See [polish verification](docs/polish-verification.md).
+
 Formatting: select text and use **B**, *I*, bullets, numbering, or quote controls in the app editor or native widget composer. Editing shows lightweight Markdown; **Preview** shows the formatted result. Standard Paste preserves supported structure and emphasis when the clipboard supplies formatted text, using Museamo's typography. Copy text includes HTML formatting with a plain-text fallback. Drafts and backups retain the Markdown. Native database migrations preserve existing thoughts and drafts through schema version 5.
 
 See [DESIGN.md](DESIGN.md) for interaction rules and [UX verification](docs/ux-verification.md) for the remaining physical-device checks. No automatic preview server is required: run npm run dev in your own terminal and stop it with Ctrl+C.

@@ -92,7 +92,8 @@ class WidgetConfigActivity : NativeScreen() {
         if (!::tagsButton.isInitialized) return
         modeHelp.text = if (modes.checkedRadioButtonId == R.id.mode_picker) "Adds a tag picker to the widget. Choose one tag on your homescreen before writing. You can add or change tags in the composer." else "New thoughts start with the tags below. Choose none for a general-purpose widget. You can still change tags while writing."
         val startingTag = tags.find { it.id == pickerTag }
-        preview.text = android.text.TextUtils.concat(labelInput.text, if (modes.checkedRadioButtonId == R.id.mode_picker) android.text.TextUtils.concat("     # ", startingTag?.displayLabel(this) ?: "No tag", " ▾") else "", "     ↗")
+        // Copy the value, not the Editable's watcher spans, into the preview.
+        preview.text = android.text.TextUtils.concat(labelInput.text.toString(), if (modes.checkedRadioButtonId == R.id.mode_picker) android.text.TextUtils.concat("     # ", startingTag?.displayLabel(this) ?: "No tag", " ▾") else "", "     ↗")
         val defaults = tags.filter { it.id in selected }
         tagsButton.text = if (modes.checkedRadioButtonId == R.id.mode_picker) android.text.TextUtils.concat("Starting tag: ", startingTag?.displayLabel(this) ?: "No tag")
             else android.text.TextUtils.concat("Default tags: ", if (defaults.isEmpty()) "None — choose tags" else android.text.TextUtils.concat(*defaults.flatMapIndexed { index, tag -> listOf<CharSequence>(if (index > 0) ", " else "", tag.displayLabel(this)) }.toTypedArray()))

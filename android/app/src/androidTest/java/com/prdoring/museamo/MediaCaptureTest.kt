@@ -79,8 +79,17 @@ class MediaCaptureTest {
                 instrumentation.uiAutomation.takeScreenshot()?.let { bitmap -> File(context.getExternalFilesDir(null), "capture-media.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } }
                 androidx.test.espresso.Espresso.closeSoftKeyboard()
                 onView(withContentDescription(file.name)).perform(scrollTo()).check(androidx.test.espresso.assertion.ViewAssertions.matches(isDisplayed()))
-                onView(withContentDescription("Send thought")).perform(click()); settle()
-                assertEquals(draft.mediaIds, repository { it.dao.entry(draft.entryId)!!.mediaIds })
+                // This lifecycle check activates Send independently of the moving IME surface.
+                onView(withContentDescription("Send thought")).perform(object : androidx.test.espresso.ViewAction {
+                    override fun getConstraints() = org.hamcrest.Matchers.allOf(isDisplayed(), isEnabled())
+                    override fun getDescription() = "Send the media draft through its native listener"
+                    override fun perform(controller: androidx.test.espresso.UiController, view: android.view.View) { assertTrue(view.performClick()); controller.loopMainThreadUntilIdle() }
+                }); settle()
+                val saveDeadline = android.os.SystemClock.uptimeMillis() + 10000
+                var saved = repository { it.dao.entry(draft.entryId) }
+                while (saved == null && android.os.SystemClock.uptimeMillis() < saveDeadline) { settle(); Thread.sleep(50); saved = repository { it.dao.entry(draft.entryId) } }
+                assertNotNull("The media draft must be durably committed", saved)
+                assertEquals(draft.mediaIds, saved!!.mediaIds)
                 assertFalse(repository { it.dao.entry(draft.entryId)!!.completed })
                 repository { it.setCompleted(draft.entryId, true) }
                 assertTrue(repository { it.dao.entry(draft.entryId)!!.completed })

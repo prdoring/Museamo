@@ -1,4 +1,6 @@
-import { Presence, PageMotion, Disclosure } from "./components/Motion";
+import { Presence, PageMotion, Disclosure, MotionList } from "./components/Motion";
+import { DesktopLayout, WindowControls } from "./components/Desktop";
+import { captureReadingAnchor, restoreReadingAnchor, type FeedUpdate } from "./feedMotion";
 import { PaperIcon } from "./components/PaperIcon";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -28,6 +30,11 @@ import { isPreview, isDesktop, capabilities } from "./platform";
 import { hasNewThoughtsAhead } from "./feedRefresh";
 type View = { tab: Tab; tagId?: string; query: string; settings?: boolean; checklistOnly?: boolean };
 export default function App() {
+  const [previewLayout, setPreviewLayout] = useState(() => isPreview && new URLSearchParams(window.location.search).get("previewLayout") === "desktop");
+  const desktopLayout = isDesktop || previewLayout;
+  useEffect(() => {
+    document.documentElement.dataset.layout = desktopLayout ? "desktop" : "phone";
+  }, [desktopLayout]);
   const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system");
   useEffect(() => {
     if (!isPreview) return;
@@ -38,6 +45,10 @@ export default function App() {
   const [view, setView] = useState<View>({ tab: "stream", query: "" });
   const [entries, setEntries] = useState<Entry[]>([]),
     [library, setLibrary] = useState<Library>({ tags: [], profiles: [] });
+  const [loadedScope, setLoadedScope] = useState("");
+  const [updateReason, setUpdateReason] = useState<FeedUpdate>("initial");
+  const pendingAnchor = useRef<() => void>(undefined);
+  const beforeLayout = () => { const restore = pendingAnchor.current; pendingAnchor.current = undefined; restore?.(); };
   const [search, setSearch] = useState(false),
     [loading, setLoading] = useState(true),
     [more, setMore] = useState(false),
@@ -79,7 +90,7 @@ export default function App() {
   async function refreshLibrary() {
     setLibrary(await bridge.library());
   }
-  async function load(append = false, keepPosition = false, movedId?: string, notifyNewThoughts = false) {
+  async function load(append = false, keepPosition = false, movedId?: string, notifyNewThoughts = false, reason: FeedUpdate = append ? "pagination" : keepPosition ? "refresh" : "initial") {
     if (append && (!paginationValid.current || loadingRequest.current || completionRequests.current.size)) return;
     const request = ++version.current,
       current = viewRef.current;
@@ -87,10 +98,6 @@ export default function App() {
     if (!append) { paginationValid.current = false; setMore(false); }
     const last = append ? entriesRef.current.at(-1) : undefined;
     const previousEntries = entriesRef.current;
-    const scroll = window.scrollY;
-    const anchor = keepPosition ? [...document.querySelectorAll<HTMLElement>("[data-entry-id]")]
-      .find(el => el.dataset.entryId !== movedId && el.getBoundingClientRect().bottom > 0) : undefined;
-    const anchorId = anchor?.dataset.entryId, anchorTop = anchor?.getBoundingClientRect().top;
     setLoading(true);
     try {
       // Read the current type before choosing both the order and its cursor.
@@ -117,6 +124,13 @@ export default function App() {
             ),
           ]
         : page.entries;
+      // Capture immediately before committing, so scrolling during a slow query is respected.
+      const anchor = keepPosition ? captureReadingAnchor(movedId) : undefined;
+      if (anchor) pendingAnchor.current = () => { if (version.current === request) restoreReadingAnchor(anchor); };
+      // The initial listener invalidation can replace the startup request.
+      // Its first result is still initial data, even when requested as refresh.
+      setUpdateReason(loadedScope === key(current) ? reason : "initial");
+      setLoadedScope(key(current));
       setEntries(next);
       paginationValid.current = true;
       setMore(page.hasMore);
@@ -125,15 +139,10 @@ export default function App() {
         ? previous || hasNewThoughtsAhead(previousEntries, page.entries)
         : false);
       cache.current.set(key(current), { entries: next, more: page.hasMore });
-      if (keepPosition) requestAnimationFrame(() => {
-        if (version.current !== request) return;
-        const nextAnchor = anchorId ? document.querySelector<HTMLElement>(`[data-entry-id="${CSS.escape(anchorId)}"]`) : null;
-        window.scrollTo(0, nextAnchor && anchorTop !== undefined ? window.scrollY + nextAnchor.getBoundingClientRect().top - anchorTop : scroll);
-      });
       if (current.tagId && !lib.tags.some((t) => t.id === current.tagId))
         setView({ tab: "tags", query: "" });
     } catch (e) {
-      if (version.current === request) failure(e, () => void load(append, keepPosition));
+      if (version.current === request) failure(e, () => void load(append, keepPosition, movedId, notifyNewThoughts, reason));
     } finally {
       if (loadingRequest.current === request) loadingRequest.current = 0;
       if (version.current === request) setLoading(false);
@@ -148,15 +157,18 @@ export default function App() {
   useEffect(() => {
     ++version.current;
     loadingRequest.current = 0;
+    pendingAnchor.current = undefined;
+    setUpdateReason(view.query ? "search" : "navigation");
     const existing = cache.current.get(key(view));
     if (existing) {
+      setLoadedScope(key(view));
       paginationValid.current = true;
       setEntries(existing.entries);
       setMore(existing.more);
       setLoading(false);
     } else {
       setEntries([]);
-      void load();
+      void load(false, false, undefined, false, view.query ? "search" : "navigation");
     }
     requestAnimationFrame(() =>
       window.scrollTo(0, positions.current.get(key(view)) || 0),
@@ -263,6 +275,7 @@ export default function App() {
   async function star(entry: Entry) {
     if (pendingStars.current.has(entry.id)) return;
     pendingStars.current.add(entry.id);
+    setUpdateReason("mutation");
     setEntries((old) =>
       old.map((e) => (e.id === entry.id ? { ...e, starred: !e.starred } : e)),
     );
@@ -270,6 +283,7 @@ export default function App() {
       await mutate(
         () => bridge.setStar({ id: entry.id, starred: !entry.starred }),
         () => {
+          setUpdateReason("mutation");
           if (view.tab === "gems" && entry.starred)
             setEntries((old) => old.filter((e) => e.id !== entry.id));
         },
@@ -286,6 +300,7 @@ export default function App() {
       await mutate(
         () => bridge.deleteEntry({ id: entry.id, baseRevision: entry.revision }),
         () => {
+          setUpdateReason("mutation");
           setEntries((old) => old.filter((e) => e.id !== entry.id));
           setDeleted((old) => [...old, entry]);
         },
@@ -308,6 +323,7 @@ export default function App() {
     setError("");
     const completed = !entry.completed;
     function update(value: boolean) {
+      setUpdateReason("mutation");
       setEntries(old => old.map(e => e.id === entry.id ? { ...e, completed: value } : e));
       setMapFocus(old => old?.id === entry.id ? { ...old, completed: value } : old);
     }
@@ -325,7 +341,7 @@ export default function App() {
       // Refresh the full loaded prefix before deriving another pagination cursor.
       // Wait for the last toggle when several independent items are being saved.
       if (!completionRequests.current.size && viewRef.current.tab !== "map")
-        await load(false, true, entry.id);
+        await load(false, true, entry.id, false, "mutation");
       selfMutation.current--;
       flushPendingRefresh();
     }
@@ -345,7 +361,7 @@ export default function App() {
         filterEntries([entry], { search: viewRef.current.query }).length > 0);
     if (matches) {
       window.scrollTo(0, 0);
-      await load();
+      await load(false, false, undefined, false, "mutation");
     } else {
       setNotice("Thought saved.");
       setShowStream(true);
@@ -367,12 +383,28 @@ export default function App() {
       flushPendingRefresh();
     }
   }
+  useEffect(() => {
+    if (!desktopLayout) return;
+    const shortcut = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || event.altKey || event.shiftKey || event.repeat || document.querySelector('[role="dialog"], [role="menu"]')) return;
+      if (event.key.toLowerCase() === "n") { event.preventDefault(); void compose(); }
+      if (event.key.toLowerCase() === "f" && !view.settings) {
+        event.preventDefault(); setSearch(true);
+        requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".search-box input")?.focus());
+      }
+    };
+    document.addEventListener("keydown", shortcut);
+    return () => document.removeEventListener("keydown", shortcut);
+  }, [desktopLayout, view]);
   return (
-    <div className={`app-shell${isDesktop ? " desktop-shell" : ""}`}>
+    <DesktopLayout.Provider value={desktopLayout}>
+    {desktopLayout && <><div className="window-drag-strip" data-tauri-drag-region /><WindowControls report={setNotice} /></>}
+    <div className={`app-shell${desktopLayout ? " desktop-shell" : ""}`}>
       <div inert={modal}>
         {isPreview && (
           <div className="preview-strip">
             <span>Preview · resets on refresh</span>
+            <button onClick={() => setPreviewLayout(!previewLayout)} aria-label="Change preview layout">Layout: {previewLayout ? "Desktop" : "Phone"}</button>
             <button onClick={() => setPreviewTheme(previewTheme === "system" ? "light" : previewTheme === "light" ? "dark" : "system")} aria-label="Change preview theme">Theme: {previewTheme}</button>
             <button
               onClick={() => {
@@ -386,6 +418,7 @@ export default function App() {
           </div>
         )}
         <header className="toolbar">
+          {desktopLayout && <span className="desktop-brand" data-tauri-drag-region>museamo</span>}
           <div className="toolbar-title">
             {(view.tagId || view.settings) && (
               <button
@@ -399,7 +432,7 @@ export default function App() {
               </button>
             )}
             {view.settings && <PaperIcon name="gear" size={22} />}
-            <h1 className={tag ? "dynamic-title" : undefined}>
+            <h1 className={tag || desktopLayout ? "dynamic-title" : undefined} data-tauri-drag-region={desktopLayout ? true : undefined}>
               {view.settings
                 ? "Settings"
                 : tag
@@ -408,9 +441,10 @@ export default function App() {
                     ? "Gems"
                     : view.tab === "tags"
                       ? "Tags"
-                      : "museamo"}
+                      : desktopLayout ? "Stream" : "museamo"}
             </h1>
           </div>
+          {desktopLayout && <div className="header-drag-space" data-tauri-drag-region />}
           <div className="toolbar-actions">
             {view.tab === "stream" && !view.settings && (
               <button
@@ -443,7 +477,7 @@ export default function App() {
                 <Search size={21} />
               </button>
             )}
-            <button
+            {(!desktopLayout || view.settings) && <button
               className="icon-button"
               aria-label={view.settings ? "Close settings" : "Settings"}
               onClick={() =>
@@ -451,7 +485,7 @@ export default function App() {
               }
             >
               {view.settings ? <PaperIcon name="close" size={21} /> : <PaperIcon name="gear" size={21} />}
-            </button>
+            </button>}
           </div>
         </header>
         <main>
@@ -473,7 +507,8 @@ export default function App() {
               </div>
             </div>
           )}
-          <PageMotion view={`${view.settings ? "settings" : view.tab}/${view.tagId || ""}`}>
+          <PageMotion view={`${view.settings ? "settings" : view.tab}/${view.tagId || ""}/${!!view.checklistOnly}`} searchKey={view.query}
+            ready={!!view.settings || view.tab === "map" || (view.tab === "tags" && !view.tagId) || loadedScope === key(view)}>
           {view.settings ? (
             <Settings
               library={library}
@@ -501,7 +536,8 @@ export default function App() {
             />
           ) : (
             <Feed
-              entries={entries}
+              entries={loadedScope === key(view) ? entries : []}
+              scope={key(view)} reason={updateReason} beforeLayout={beforeLayout}
               checklist={tag?.type === "checklist"}
               categoryId={tag?.id}
               complete={e => void complete(e).catch(() => {})}
@@ -534,10 +570,11 @@ export default function App() {
           tagName={tag?.name}
           compose={() => void compose()}
           navigate={(tab) => navigate({ tab, query: "" })}
+          openSettings={() => navigate({ ...view, query: "", settings: !view.settings })}
         />
-        {(notice || deleted.length > 0 || showStream) && (
           <aside className="notifications" aria-label="Notifications">
-            {(notice || showStream) && (
+            <MotionList scope="notifications" items={[
+            ...((notice || showStream) ? [{ key: "notice", content: (
               <div className="toast" role="status">
                 <span>{notice || "Thought saved."}</span>
                 {showStream && (
@@ -567,8 +604,8 @@ export default function App() {
                   <PaperIcon name="close" size={17} />
                 </button>
               </div>
-            )}
-            {deleted.map((e) => (
+            ) }] : []),
+            ...deleted.map((e) => ({ key: e.id, content: (
               <div className="toast" key={e.id} role="status">
                 <span>
                   Deleted: {e.text.slice(0, 28) || `${e.attachments?.length || 0} attachment(s)`}
@@ -597,9 +634,8 @@ export default function App() {
                   <PaperIcon name="close" size={17} />
                 </button>
               </div>
-            ))}
+            ) }))]} />
           </aside>
-        )}
       </div>
       <Presence>{mapFocus && <Sheet title="Post location" close={() => setMapFocus(undefined)}><LocationMap focus={mapFocus} tags={library.tags} complete={complete} pendingCompletions={pendingCompletions} edit={entry => { setMapFocus(undefined); setEditing(entry); }} /></Sheet>}</Presence>
       <Presence>{editing && (
@@ -625,6 +661,7 @@ export default function App() {
               bridge.updateEntry({ id: entry.id, baseRevision: entry.revision, text, tagIds, ...(location !== undefined ? { location } : {}), attachmentIds: attachments.map(a => a.id) }),
             );
             const updated = (await bridge.getEntry({ id: entry.id })).entry;
+            setUpdateReason("mutation");
             setEntries((old) =>
               old.flatMap((e) =>
                 e.id !== entry.id
@@ -681,5 +718,6 @@ export default function App() {
         />
       )}</Presence>
     </div>
+    </DesktopLayout.Provider>
   );
 }

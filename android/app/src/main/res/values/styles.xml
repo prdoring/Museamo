@@ -34,6 +34,17 @@
         <item name="android:windowEnterAnimation">@anim/surface_enter</item>
         <item name="android:windowExitAnimation">@anim/surface_exit</item>
     </style>
+    <!-- Android 8.0 rejects fixed orientation on floating/translucent activities. -->
+    <style name="PortraitCaptureTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">@color/widget_background</item>
+        <item name="android:windowAnimationStyle">@style/SurfaceAnimation</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+        <item name="colorAccent">@color/widget_accent</item>
+        <item name="android:fontFamily">@font/dm_sans</item>
+        <item name="fontFamily">@font/dm_sans</item>
+    </style>
     <style name="WidgetConfigTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowIsFloating">false</item>
         <item name="android:windowBackground">@color/widget_background</item>

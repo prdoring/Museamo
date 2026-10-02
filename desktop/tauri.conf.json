@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "label": "main", "title": "Museamo", "width": 1100, "height": 800, "minWidth": 640, "minHeight": 500 }],
+    "windows": [{ "label": "main", "title": "Museamo", "width": 1100, "height": 800, "minWidth": 640, "minHeight": 500, "decorations": false, "shadow": true, "resizable": true }],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http://127.0.0.1:*; media-src 'self' blob: https: http://127.0.0.1:*; frame-src https://www.youtube.com https://player.vimeo.com; connect-src ipc: http://ipc.localhost 'self'; object-src 'none'; base-uri 'self'",
       "capabilities": ["main"]

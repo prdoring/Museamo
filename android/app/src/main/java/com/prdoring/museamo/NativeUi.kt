@@ -1,6 +1,7 @@
 package com.prdoring.museamo
 
 import android.os.Bundle
+import android.os.Build
 import android.graphics.drawable.GradientDrawable
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
@@ -17,6 +18,22 @@ abstract class NativeScreen : AppCompatActivity() {
     lateinit var error: TextView
     protected lateinit var contentScroll: ScrollView
     protected open val floatingSurface: Boolean = true
+    private val portraitHost get() = floatingSurface && Build.VERSION.SDK_INT == 26
+    protected open fun dismissSurface() { finish() }
+    protected fun installSurfaceContent(content: View) {
+        if (!portraitHost) { setContentView(content); return }
+        val host = FrameLayout(this).apply { setBackgroundColor(color(R.color.widget_background)) }
+        content.background = PaperSurface(this, radiusDp = 12f, border = true)
+        host.addView(content, FrameLayout.LayoutParams(resources.displayMetrics.widthPixels.coerceAtMost(dp(640)), -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
+        host.setOnClickListener { dismissSurface() }
+        content.isClickable = true
+        ViewCompat.setOnApplyWindowInsetsListener(host) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, if (insets.isVisible(WindowInsetsCompat.Type.ime())) 0 else bars.bottom)
+            WindowInsetsCompat.Builder(insets).setInsets(WindowInsetsCompat.Type.systemBars(), androidx.core.graphics.Insets.NONE).build()
+        }
+        setContentView(host)
+    }
     val accent get() = ContextCompat.getColor(this, R.color.widget_accent)
     val font get() = ResourcesCompat.getFont(this, R.font.dm_sans)
     val headingFont get() = ResourcesCompat.getFont(this, R.font.trailhead_clean)
@@ -29,20 +46,21 @@ abstract class NativeScreen : AppCompatActivity() {
     fun glyph(button: Button, id: Int, tint: Int = R.color.widget_text) { val icon = ContextCompat.getDrawable(this, id)!!.mutate(); androidx.core.graphics.drawable.DrawableCompat.setTint(icon, color(tint)); icon.setBounds(0, 0, dp(20), dp(20)); button.setCompoundDrawablesRelative(icon, null, null, null); button.compoundDrawablePadding = dp(8) }
     fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
     override fun onCreate(state: Bundle?) {
+        if (portraitHost) setTheme(R.style.PortraitCaptureTheme)
         super.onCreate(state)
         val scroll = ScrollView(this).apply { isFillViewport = false; isFocusableInTouchMode = true }
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(16)) }
         contentScroll = scroll
         scroll.addView(body)
-        setContentView(scroll)
-        if (floatingSurface) {
+        installSurfaceContent(scroll)
+        if (floatingSurface && !portraitHost) {
         window.setLayout(resources.displayMetrics.widthPixels.coerceAtMost(dp(640)), ViewGroup.LayoutParams.WRAP_CONTENT)
         window.setBackgroundDrawable(PaperSurface(this, radiusDp = 12f, border = true))
         window.setDimAmount(.24f); window.setGravity(Gravity.BOTTOM)
         } else {
             window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             window.setBackgroundDrawable(PaperSurface(this))
-            scroll.isFillViewport = true
+            scroll.isFillViewport = !portraitHost
         }
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())

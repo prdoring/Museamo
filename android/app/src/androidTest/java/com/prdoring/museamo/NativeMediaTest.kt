@@ -91,6 +91,15 @@ class NativeMediaTest {
                 until(scenario, "document.querySelector('.media-photo') !== null", "true")
                 js(scenario, "document.querySelector('.media-photo').click()")
                 until(scenario, "document.querySelector('.photo-stage img')?.naturalWidth", "600")
+                val rotation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation
+                try {
+                    for (angle in listOf(android.view.Surface.ROTATION_90, android.view.Surface.ROTATION_270, android.view.Surface.ROTATION_180)) {
+                        assertTrue(rotation.setRotation(angle))
+                        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                        scenario.onActivity { assertEquals(android.content.res.Configuration.ORIENTATION_PORTRAIT, it.resources.configuration.orientation) }
+                        assertEquals("600", js(scenario, "document.querySelector('.photo-stage img')?.naturalWidth"))
+                    }
+                } finally { rotation.setRotation(android.app.UiAutomation.ROTATION_UNFREEZE) }
                 assertEquals("true", js(scenario, "(()=>{const r=document.querySelector('.photo-lightbox').getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight+1 && document.querySelector('.photo-lightbox').querySelectorAll('button').length===1})()"))
                 fun touch(action: Int, points: List<Pair<Float, Float>>) {
                     scenario.onActivity { activity ->

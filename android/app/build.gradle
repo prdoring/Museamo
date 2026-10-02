@@ -40,6 +40,8 @@ repositories {
 }
 
 dependencies {
+    // Align transitive legacy jdk7/jdk8 artifacts with the compiler's stdlib.
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:2.2.10')
     implementation 'org.jsoup:jsoup:1.21.2'
     implementation 'io.noties.markwon:core:4.6.2'
     implementation 'androidx.room:room-runtime:2.7.2'

@@ -1,4 +1,7 @@
 import { Presence, Disclosure, useExiting, lockOverlay, reducedMotion } from "./Motion";
+import { animateElement, motion, MotionList } from "./Motion";
+import { useDesktopLayout } from "./Desktop";
+import { ActionMenu } from "./ActionMenu";
 import { MediaGallery, AttachmentEditor } from "./Media";
 import { type Attachment } from "../media";
 import { PaperIcon } from "./PaperIcon";
@@ -56,11 +59,11 @@ export function Sheet({
     const focusable = () =>
       Array.from(
         ref.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]',
+          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"], [contenteditable="true"]',
         ) || [],
       );
     (
-      ref.current?.querySelector<HTMLElement>("[autofocus],textarea,input") ||
+      ref.current?.querySelector<HTMLElement>('[autofocus], [contenteditable="true"], textarea, input') ||
       focusable()[0]
     )?.focus();
     const key = (e: KeyboardEvent) => {
@@ -99,6 +102,7 @@ export function Sheet({
       className="sheet-backdrop"
       data-exiting={exiting}
       inert={exiting}
+      aria-hidden={exiting || undefined}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
@@ -147,6 +151,9 @@ export function Post({
   openTag: (id: string) => void;
   report: (message: string) => void;
 }) {
+  const desktop = useDesktopLayout();
+  const exiting = useExiting();
+  const actionButton = useRef<HTMLButtonElement>(null);
   const checklist = isChecklistEntry(entry, tags);
   const compact = checklist && !!checklistCategoryId;
   const visibleTags = tags.filter(t => entry.tagIds.includes(t.id) && (!compact || t.id !== checklistCategoryId));
@@ -159,11 +166,10 @@ export function Post({
   useLayoutEffect(() => {
     const el = copy.current, from = previousHeight.current;
     if (!el || from === undefined || reducedMotion()) return;
-    const animation = el.animate(
+    return animateElement(el,
       [{ height: `${from}px`, overflow: "hidden" }, { height: `${el.clientHeight}px`, overflow: "hidden" }],
-      { duration: 180, easing: "cubic-bezier(.2,.7,.2,1)" },
+      motion.layout,
     );
-    return () => animation.cancel();
   }, [expanded]);
   useLayoutEffect(() => {
     const el = body.current;
@@ -178,9 +184,11 @@ export function Post({
   }, [entry.text, expanded]);
 
   const actions = <button
+    ref={actionButton}
     className="icon-button post-actions"
     aria-label={compact && entry.starred ? "Thought actions, saved to Gems" : "Thought actions"}
     aria-expanded={menu}
+    aria-haspopup={desktop ? "menu" : "dialog"}
     onClick={() => setMenu(!menu)}
   >
     <MoreHorizontal size={21} />
@@ -188,7 +196,7 @@ export function Post({
   </button>;
 
   return (
-    <article className={"post" + (checklist ? " post-checklist" : "") + (compact ? " post-compact" : "") + (compact && !entry.text.trim() ? " post-attachment-only" : "")} data-entry-id={entry.id}>
+    <article className={"post" + (checklist ? " post-checklist" : "") + (compact ? " post-compact" : "") + (compact && !entry.text.trim() ? " post-attachment-only" : "")} data-entry-id={exiting ? undefined : entry.id}>
       {!compact && <div className="post-top">
         <time dateTime={new Date(entry.createdAt).toISOString()}>
           {new Date(entry.createdAt).toLocaleTimeString([], {
@@ -242,7 +250,7 @@ export function Post({
         </div>
       )}
       <Presence>{menu && (
-        <Sheet title="Thought actions" close={() => setMenu(false)}>
+        <PostActions desktop={desktop} anchor={actionButton} close={() => setMenu(false)}>
           {compact && <>
             <p className="post-details"><time dateTime={new Date(entry.createdAt).toISOString()}>
               {new Date(entry.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
@@ -291,10 +299,13 @@ export function Post({
             <Trash2 size={19} />
             Delete
           </button>
-        </Sheet>
+        </PostActions>
       )}</Presence>
     </article>
   );
+}
+function PostActions({ desktop, anchor, close, children }: { desktop: boolean; anchor: React.RefObject<HTMLButtonElement | null>; close: () => void; children: ReactNode }) {
+  return desktop ? <ActionMenu anchor={anchor} close={close}>{children}</ActionMenu> : <Sheet title="Thought actions" close={close}>{children}</Sheet>;
 }
 export function Editor({
   initial,
@@ -516,7 +527,8 @@ export function Editor({
             </div>
             </Disclosure>
           )}</Presence>
-          {active && (
+          <Presence>{active && (
+            <Disclosure>
             <div className="suggestions" aria-label="Hashtag suggestions">
               {tags
                 .filter((t) =>
@@ -546,9 +558,10 @@ export function Editor({
                   </button>
                 )}
             </div>
-          )}
-          <div className="chips">
-            {tags
+            </Disclosure>
+          )}</Presence>
+          <MotionList className="chips" scope="composer-tags" items={[
+            ...tags
               .filter(
                 (t) =>
                   selected.includes(t.id) ||
@@ -556,7 +569,7 @@ export function Editor({
                     (h) => h.name.toLowerCase() === t.name.toLowerCase(),
                   ),
               )
-              .map((t) => (
+              .map((t) => ({ key: t.id, content: (
                 <button
                   disabled={busy || importing}
                   className="chip selected"
@@ -567,8 +580,8 @@ export function Editor({
                   # {tagDisplayName(t, tags)}
                   <PaperIcon name="close" size={14} />
                 </button>
-              ))}
-            {inline
+              ) })),
+            ...inline
               .filter(
                 (h, i) =>
                   !tags.some(
@@ -578,7 +591,7 @@ export function Editor({
                     (v) => v.name.toLowerCase() === h.name.toLowerCase(),
                   ) === i,
               )
-              .map((h) => (
+              .map((h) => ({ key: `new:${h.name}`, content: (
                 <button
                   key={h.name}
                   className="chip selected"
@@ -588,8 +601,7 @@ export function Editor({
                   <small>new</small>
                   <PaperIcon name="close" size={14} />
                 </button>
-              ))}
-          </div>
+              ) }))]} />
           <Presence>{showTags && (
             <Disclosure>
             <div className="tag-selector">
