@@ -29,7 +29,7 @@ Open [GitHub Releases](https://github.com/prdoring/Museamo/releases) and choose 
 
 | Your device | Download | Requirements |
 | --- | --- | --- |
-| Android | `Museamo-VERSION-android.apk` (or `-android-debug.apk` for a test build) | Android 7 or newer; Android System WebView 105 or newer |
+| Android | `Museamo-VERSION-android.apk` (or `-android-debug.apk` for a test build) | Android 7 or newer; Android System WebView 111 or newer |
 | Windows — recommended | `Museamo-VERSION-windows-x64-setup.exe` | 64-bit Windows 10 or 11; includes WebView2 offline setup |
 | Windows — standalone | `Museamo-VERSION-windows-x64.exe` | 64-bit Windows 10 or 11 with Microsoft Edge WebView2 Runtime already installed |
 
