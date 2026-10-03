@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { options, assertVersions, assetNames, sha256, verifyBundle } from "./release.mjs";
+import { options, assertVersions, assertBuildHost, sha256, verifyBundle } from "./release.mjs";
+import { artifactName, platforms, targets, kinds, assertPlatformManifest, verifyFiles, metadataHash, verificationChecks, publicationFiles } from "./release-artifacts.mjs";
 import { configureSigning, signingSource } from "./release-signing.mjs";
 
 test("signing loads saved credentials and preserves complete explicit overrides", async () => {
@@ -13,7 +14,7 @@ test("signing loads saved credentials and preserves complete explicit overrides"
     await writeFile(keystore, "not a real key");
     const saved = { schema: 1, MUSEAMO_KEYSTORE: keystore, MUSEAMO_KEY_ALIAS: "fixture", MUSEAMO_STORE_PASSWORD: "test-only", MUSEAMO_KEY_PASSWORD: "test-only" };
     const env = {};
-    await configureSigning(env, () => saved);
+    await configureSigning(env, () => saved, "win32");
     assert.equal(env.MUSEAMO_KEYSTORE, keystore);
     assert.equal(env.MUSEAMO_KEY_ALIAS, "fixture");
     await configureSigning(env, () => { throw new Error("complete overrides must not read saved credentials"); });
@@ -24,8 +25,8 @@ test("signing loads saved credentials and preserves complete explicit overrides"
 
 test("signing refuses partial overrides, malformed saved credentials, and lost keys", async () => {
   assert.throws(() => signingSource({ MUSEAMO_KEYSTORE: "existing.p12" }), /Incomplete Android signing override/);
-  await assert.rejects(configureSigning({}, () => ({ schema: 1 })), /Invalid saved signing configuration/);
-  await assert.rejects(configureSigning({}, () => ({ schema: 2 })), /Invalid saved signing configuration/);
+  await assert.rejects(configureSigning({}, () => ({ schema: 1 }), "win32"), /Invalid saved signing configuration/);
+  await assert.rejects(configureSigning({}, () => ({ schema: 2 }), "win32"), /Invalid saved signing configuration/);
   const directory = await mkdtemp(path.join(tmpdir(), "museamo-missing-key-test-"));
   try {
     const env = { MUSEAMO_KEYSTORE: path.join(directory, "missing.p12"), MUSEAMO_KEY_ALIAS: "fixture", MUSEAMO_STORE_PASSWORD: "test-only", MUSEAMO_KEY_PASSWORD: "test-only" };
@@ -33,13 +34,31 @@ test("signing refuses partial overrides, malformed saved credentials, and lost k
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test("debug builds are prereleases and dirty builds cannot enter the push command", () => {
-  assert.equal(options(["push", "--android", "debug"]).prerelease, true);
-  assert.throws(() => options(["push", "--allow-dirty"]), /only available for local/);
+test("Unix signing requires a complete explicit identity and never loads Windows storage", async () => {
+  let loaded = false;
+  await assert.rejects(configureSigning({}, () => { loaded = true; }, "darwin"), /all four MUSEAMO signing variables/);
+  assert.equal(loaded, false);
+  await assert.rejects(configureSigning({ MUSEAMO_KEY_ALIAS: "fixture" }, () => { loaded = true; }, "linux"), /Incomplete Android signing override/);
+  assert.equal(loaded, false);
+});
+
+test("build commands select one host, debug previews stay local, and publication is explicit", () => {
+  assert.equal(options(["build"]).platform, "windows");
+  assert.equal(options(["build", "--platform", "android", "--android", "debug"]).prerelease, true);
+  assert.equal(options(["build", "--platform", "macos", "--allow-dirty"]).allowDirty, true);
+  assert.throws(() => options(["push"]), /combined push command was removed/);
   assert.throws(() => options(["publish", "--allow-dirty"]), /only available for local/);
-  assert.equal(options(["build", "--allow-dirty"]).allowDirty, true);
-  assert.throws(() => options(["build", "--android", "unsigned"]), /debug or release/);
+  assert.throws(() => options(["assemble", "--allow-dirty"]), /only available for local/);
+  assert.throws(() => options(["build", "--android", "debug"]), /only available for Android/);
+  assert.throws(() => options(["build", "--platform", "android", "--android", "unsigned"]), /debug or release/);
   assert.throws(() => options(["build", "--skip-tests"]), /Unknown option/);
+  assert.throws(() => options(["assemble", "--platforms", "linux,linux"]), /duplicate/);
+  assert.throws(() => options(["build", "--platform"]), /Missing value/);
+  assert.deepEqual(options(["assemble", "--platforms", "android,windows"]).platforms, ["android", "windows"]);
+  assert.throws(() => assertBuildHost("windows", "darwin", "arm64"), /Build windows on win32 x64/);
+  assert.throws(() => assertBuildHost("linux", "linux", "arm64"), /Build linux/);
+  assert.doesNotThrow(() => assertBuildHost("android", "darwin", "arm64"));
+  assert.doesNotThrow(() => assertBuildHost("macos", "darwin", "arm64"));
 });
 
 test("version mismatch and invalid release versions stop packaging", () => {
@@ -48,30 +67,135 @@ test("version mismatch and invalid release versions stop packaging", () => {
   assert.throws(() => assertVersions({ "package.json": "../../secret" }), /major.minor.patch/);
 });
 
-test("publishing rejects missing, altered, dirty, or stale downloads", async () => {
+const source = { version: "0.4.0", versionCode: 5, commit: "a".repeat(40), dirty: false };
+function platformManifest(platform, android = "release") {
+  return { schema: 2, version: source.version, versionCode: source.versionCode, commit: source.commit, cleanSource: true, platform, target: targets[platform], prerelease: android === "debug", ...(platform === "android" ? { android, signingCertificate: "b".repeat(64) } : {}), ...(platform === "macos" ? { macosDistribution: "developer-id-notarized" } : {}), files: [] };
+}
+async function fixture(selected = platforms, android = "release") {
   const directory = await mkdtemp(path.join(tmpdir(), "museamo-release-test-"));
+  const builds = [];
+  async function file(name, kind, target) {
+    const location = path.join(directory, name);
+    await writeFile(location, `fixture for ${name}`);
+    return { name, kind, target, version: source.version, commit: source.commit, cleanSource: true, sha256: await sha256(location), size: (await stat(location)).size };
+  }
+  for (const platform of selected) {
+    const manifest = platformManifest(platform, android);
+    for (const kind of kinds[platform]) manifest.files.push(await file(artifactName(source.version, platform, kind, android), kind, manifest.target));
+    builds.push(manifest);
+  }
+  const files = [...builds.flatMap(build => build.files), await file(`Museamo-${source.version}-source.zip`, "source", "source"), await file("release-notes.md", "notes", "source")];
+  await writeFile(path.join(directory, "SHA256SUMS.txt"), files.map(file => `${file.sha256}  ${file.name}`).join("\n") + "\n");
+  const verification = Object.fromEntries(builds.map(build => [build.platform, { schema: 1, commit: build.commit, version: build.version, platform: build.platform, manifestSha256: metadataHash(build), checks: verificationChecks(build.platform) }]));
+  return { directory, manifest: { schema: 2, version: source.version, versionCode: source.versionCode, commit: source.commit, cleanSource: true, platforms: selected, prerelease: android === "debug", builds, files, verification } };
+}
+
+// Exercise the complete transport format without invoking native build tools or external services.
+test("assembly accepts all targets and deliberate desktop-only or Windows/Android selections", async () => {
+  for (const selected of [platforms, ["macos"], ["linux"], ["android", "windows"]]) {
+    const { directory, manifest } = await fixture(selected, "debug");
+    try { await verifyBundle(directory, manifest, source, { requireVerification: true }); }
+    finally { await rm(directory, { recursive: true, force: true }); }
+  }
+});
+
+test("assembly refuses incomplete, duplicate, inconsistent, or unverified builds", async () => {
+  const { directory, manifest } = await fixture();
   try {
-    const source = { version: "0.4.0", commit: "a".repeat(40), dirty: false };
-    const files = [];
-    for (const name of [...assetNames(source.version, "debug"), "release-notes.md"]) {
-      const file = path.join(directory, name);
-      await writeFile(file, `fixture for ${name}`);
-      files.push({ name, sha256: await sha256(file), size: (await stat(file)).size });
+    const check = altered => verifyBundle(directory, altered, source, { requireVerification: true });
+    await assert.rejects(check({ ...manifest, builds: manifest.builds.slice(1) }), /incomplete/);
+    await assert.rejects(check({ ...manifest, builds: [manifest.builds[0], manifest.builds[0], ...manifest.builds.slice(2)] }), /Duplicate/);
+    await assert.rejects(check({ ...manifest, platforms: ["android", "android", "macos", "linux"] }), /platform selection/);
+    await assert.rejects(check({ ...manifest, verification: {} }), /Missing or stale verification/);
+    const stale = structuredClone(manifest);
+    stale.builds[0].signingCertificate = "c".repeat(64);
+    await assert.rejects(check(stale), /stale verification/);
+    for (const field of ["commit", "version", "versionCode"]) {
+      const inconsistent = structuredClone(manifest);
+      inconsistent.builds[1][field] = field === "versionCode" ? 6 : "different";
+      await assert.rejects(check(inconsistent), /manifest|commit\/version/);
     }
-    const sums = files.map(file => `${file.sha256}  ${file.name}`).join("\n") + "\n";
-    await writeFile(path.join(directory, "SHA256SUMS.txt"), sums);
-    const manifest = { schema: 1, ...source, android: "debug", files };
-    await verifyBundle(directory, manifest, source);
-    await assert.rejects(verifyBundle(directory, { ...manifest, files: files.slice(1) }, source), /incomplete/);
-    await assert.rejects(verifyBundle(directory, { ...manifest, dirty: true }, source), /clean commit/);
+    const mismatchedArtifact = structuredClone(manifest);
+    mismatchedArtifact.files[1] = { ...mismatchedArtifact.files[1], size: mismatchedArtifact.files[1].size + 1 };
+    await assert.rejects(check(mismatchedArtifact), /metadata|differs/);
+    await assert.rejects(check({ ...manifest, cleanSource: false }), /clean commit/);
     await assert.rejects(verifyBundle(directory, manifest, { ...source, dirty: true }), /clean commit/);
-    await assert.rejects(verifyBundle(directory, manifest, { ...source, commit: "b".repeat(40) }), /clean commit/);
-    await assert.rejects(verifyBundle(directory, manifest, { ...source, version: "0.5.0" }), /version/);
-    await assert.rejects(verifyBundle(directory, { ...manifest, files: [{ ...files[0], name: "../secret" }, ...files.slice(1)] }, source), /incomplete|Invalid/);
-    await writeFile(path.join(directory, files[0].name), "tampered APK");
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("Android signing and prerelease modes cannot change during assembly", async () => {
+  const { directory, manifest } = await fixture(["android"], "debug");
+  try {
+    await assert.rejects(verifyBundle(directory, { ...manifest, prerelease: false }, source), /Prerelease builds/);
+    const unsigned = structuredClone(manifest.builds[0]);
+    delete unsigned.signingCertificate;
+    assert.throws(() => assertPlatformManifest(unsigned, source), /signing metadata/);
+    const stableDebug = { ...manifest.builds[0], prerelease: false };
+    assert.throws(() => assertPlatformManifest(stableDebug, source), /Debug APKs/);
+    const wrongTarget = { ...manifest.builds[0], target: targets.windows };
+    assert.throws(() => assertPlatformManifest(wrongTarget, source), /platform\/target/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("artifact validation rejects path traversal, duplicates, altered bytes, symlinks, and extra files", async () => {
+  const { directory, manifest } = await fixture(["linux"]);
+  try {
+    const files = manifest.builds[0].files;
+    for (const name of ["../secret", "..\\secret", "/secret", "C:\\secret", ".", "..", ""]) {
+      await assert.rejects(verifyFiles(directory, [{ ...files[0], name }]), /Invalid release filename/);
+    }
+    await assert.rejects(verifyFiles(directory, [files[0], files[0]]), /Duplicate/);
+    const duplicateKind = { ...manifest.builds[0], files: [files[0], files[0]] };
+    assert.throws(() => assertPlatformManifest(duplicateKind, source), /Duplicate/);
+    await writeFile(path.join(directory, files[0].name), "changed");
     await assert.rejects(verifyBundle(directory, manifest, source), /Release file changed/);
     await writeFile(path.join(directory, files[0].name), `fixture for ${files[0].name}`);
-    await writeFile(path.join(directory, "SHA256SUMS.txt"), "incorrect checksum list");
+    if (process.platform !== "win32") {
+      await rm(path.join(directory, files[0].name));
+      await writeFile(path.join(directory, "actual.deb"), `fixture for ${files[0].name}`);
+      await symlink("actual.deb", path.join(directory, files[0].name));
+      await assert.rejects(verifyFiles(directory, files), /Release file changed/);
+      await rm(path.join(directory, files[0].name));
+      await rm(path.join(directory, "actual.deb"));
+      await writeFile(path.join(directory, files[0].name), `fixture for ${files[0].name}`);
+    }
+    await writeFile(path.join(directory, "stale.exe"), "old output");
+    await assert.rejects(verifyBundle(directory, manifest, source), /unlisted files/);
+    await rm(path.join(directory, "stale.exe"));
+    await writeFile(path.join(directory, "SHA256SUMS.txt"), "wrong sums");
     await assert.rejects(verifyBundle(directory, manifest, source), /Checksum list changed/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+
+test("unsigned or unnotarized macOS previews cannot become stable downloads", async () => {
+  const { directory, manifest } = await fixture(["macos"]);
+  try {
+    const preview = { ...manifest.builds[0], macosDistribution: "preview", prerelease: false };
+    assert.throws(() => assertPlatformManifest(preview, source), /must be prereleases/);
+    assert.doesNotThrow(() => assertPlatformManifest({ ...preview, prerelease: true }, source));
+    assert.throws(() => assertPlatformManifest({ ...preview, macosDistribution: undefined }, source), /distribution metadata/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+
+test("publication hashes bind all uploaded bytes to the reviewed snapshot", async () => {
+  const { directory, manifest } = await fixture(["linux"]);
+  try {
+    const manifestBytes = JSON.stringify(manifest, null, 2) + "\n";
+    await writeFile(path.join(directory, "manifest.json"), manifestBytes);
+    const uploads = publicationFiles(manifest, manifestBytes);
+    await verifyFiles(directory, uploads);
+    assert.equal(uploads.length, manifest.files.length + 2);
+    assert.equal(uploads.find(file => file.name === manifest.files[0].name).sha256, manifest.files[0].sha256);
+    assert.throws(() => publicationFiles(manifest, JSON.stringify({ ...manifest, prerelease: true })), /differs from reviewed/);
+    // Parsed JSON still matches, but a transport byte change must not pass publication.
+    await writeFile(path.join(directory, "manifest.json"), manifestBytes + "\n");
+    await assert.rejects(verifyFiles(directory, uploads), /Release file changed: manifest.json/);
+    await writeFile(path.join(directory, "manifest.json"), manifestBytes);
+    await writeFile(path.join(directory, "release-notes.md"), "changed after review");
+    await assert.rejects(verifyFiles(directory, uploads), /Release file changed: release-notes.md/);
+    // Captured expectations never adopt the altered notes or artifact bytes.
+    assert.deepEqual(publicationFiles(manifest, manifestBytes), uploads);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

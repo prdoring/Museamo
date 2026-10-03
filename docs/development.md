@@ -22,6 +22,8 @@ npm run test:release
 
 ## Android
 
+For a Mac walkthrough covering permanent Rust installation, phone installation, and a shared release key in 1Password, see [Mac setup](mac-setup.md).
+
 Build Android on macOS arm64/x64, Linux x64, or Windows x64. Install JDK 21, Android SDK platform 36, build-tools 36.0.0, NDK 30.0.14904198, and Rust's Android targets. Set `JAVA_HOME` to the JDK and `ANDROID_HOME` to the SDK. Verify Android Studio's bundled JBR is version 21 before using it. Alternatively, Gradle can locate the SDK through ignored `android/local.properties` (`sdk.dir=...`); the direct sync-core command needs `ANDROID_HOME` or an explicit NDK directory.
 
 ```sh
@@ -104,4 +106,4 @@ Persistence errors must remain visible; real apps must never fall back to previe
 
 ## CI and releases
 
-GitHub Actions validates frontend, Rust, Android unit/lint, emulator, and Windows/macOS/Linux desktop checks. Desktop validation bundles are retained as short-lived workflow artifacts. See [the release guide](releases.md) for the current local release workflow.
+GitHub Actions defines frontend, Rust, Android unit/lint, emulator, and Windows/macOS/Linux desktop checks. Desktop validation bundles are retained as short-lived workflow artifacts, not published releases. Downloadable releases are assembled and published explicitly from local builds; see [the release guide](releases.md).
