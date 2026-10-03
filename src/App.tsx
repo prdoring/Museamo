@@ -1,5 +1,5 @@
 import { Presence, PageMotion, Disclosure, MotionList } from "./components/Motion";
-import { DesktopLayout, WindowControls } from "./components/Desktop";
+import { DesktopLayout, DesktopRuntime, WindowControls } from "./components/Desktop";
 import { captureReadingAnchor, restoreReadingAnchor, type FeedUpdate } from "./feedMotion";
 import { PaperIcon } from "./components/PaperIcon";
 import { ChecklistMark, SharedMark } from "./components/Sharing";
@@ -28,15 +28,40 @@ import { Navigation, type Tab } from "./components/Navigation";
 import { Feed } from "./components/Feed";
 import { Settings } from "./components/Settings";
 import { SearchField, TagList } from "./components/LibraryViews";
-import { isPreview, isDesktop, capabilities } from "./platform";
+import { isPreview, isDesktop, capabilities, previewDesktopInfo, readNativeDesktopInfo, desktopShortcut, shortcutModifier, type DesktopRuntimeState } from "./platform";
+import type { DesktopInfo } from "./sync";
 import { hasNewThoughtsAhead } from "./feedRefresh";
 type View = { tab: Tab; tagId?: string; query: string; settings?: boolean; checklistOnly?: boolean };
 export default function App() {
   const [previewLayout, setPreviewLayout] = useState(() => isPreview && new URLSearchParams(window.location.search).get("previewLayout") === "desktop");
   const desktopLayout = isDesktop || previewLayout;
+  const [desktopRuntime, setDesktopRuntime] = useState<DesktopRuntimeState>(() => isDesktop ? { status: "loading" } : { status: "ready", info: previewDesktopInfo });
+  const desktopInfoRequest = useRef<Promise<DesktopInfo> | undefined>(undefined);
+  const [desktopInfoAttempt, setDesktopInfoAttempt] = useState(0);
+  useEffect(() => {
+    if (!isDesktop) return;
+    let disposed = false;
+    // React StrictMode repeats effect setup; reuse the same native request.
+    desktopInfoRequest.current ??= bridge.getDesktopInfo().then(readNativeDesktopInfo);
+    void desktopInfoRequest.current.then(info => {
+      if (!disposed) setDesktopRuntime({ status: "ready", info });
+    }).catch(error => {
+      if (!disposed) setDesktopRuntime({ status: "error", message: error instanceof Error ? error.message : "Could not load desktop information." });
+    });
+    return () => { disposed = true; };
+  }, [desktopInfoAttempt]);
+  function retryDesktopInfo() {
+    desktopInfoRequest.current = undefined;
+    setDesktopRuntime({ status: "loading" });
+    setDesktopInfoAttempt(attempt => attempt + 1);
+  }
+  const windowControls = desktopRuntime.status === "ready" ? desktopRuntime.info.windowControls : desktopRuntime.status;
   useEffect(() => {
     document.documentElement.dataset.layout = desktopLayout ? "desktop" : "phone";
-  }, [desktopLayout]);
+    if (desktopLayout) document.documentElement.dataset.windowControls = windowControls;
+    else delete document.documentElement.dataset.windowControls;
+    return () => { delete document.documentElement.dataset.windowControls; };
+  }, [desktopLayout, windowControls]);
   const [previewTheme, setPreviewTheme] = useState<"system" | "light" | "dark">("system");
   useEffect(() => {
     if (!isPreview) return;
@@ -386,21 +411,23 @@ export default function App() {
     }
   }
   useEffect(() => {
-    if (!desktopLayout) return;
+    if (!desktopLayout || desktopRuntime.status !== "ready") return;
     const shortcut = (event: KeyboardEvent) => {
-      if (!event.ctrlKey || event.altKey || event.shiftKey || event.repeat || document.querySelector('[role="dialog"], [role="menu"]')) return;
-      if (event.key.toLowerCase() === "n") { event.preventDefault(); void compose(); }
-      if (event.key.toLowerCase() === "f" && !view.settings) {
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return;
+      const action = desktopShortcut(event, desktopRuntime.info);
+      if (action === "compose") { event.preventDefault(); void compose(); }
+      if (action === "search" && !view.settings) {
         event.preventDefault(); setSearch(true);
         requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".search-box input")?.focus());
       }
     };
     document.addEventListener("keydown", shortcut);
     return () => document.removeEventListener("keydown", shortcut);
-  }, [desktopLayout, view]);
+  }, [desktopLayout, desktopRuntime, view]);
   return (
     <DesktopLayout.Provider value={desktopLayout}>
-    {desktopLayout && <><div className="window-drag-strip" data-tauri-drag-region /><WindowControls report={setNotice} /></>}
+    <DesktopRuntime.Provider value={desktopRuntime}>
+    {desktopLayout && <>{windowControls === "custom" && <div className="window-drag-strip" data-tauri-drag-region />}<WindowControls report={setNotice} /></>}
     <div className={`app-shell${desktopLayout ? " desktop-shell" : ""}`}>
       <div inert={modal}>
         {isPreview && (
@@ -471,6 +498,7 @@ export default function App() {
               <button
                 className="icon-button"
                 aria-label="Search"
+                title={desktopLayout && desktopRuntime.status === "ready" ? `Search (${shortcutModifier(desktopRuntime.info)}+F)` : "Search"}
                 aria-expanded={search}
                 onClick={() => {
                   setSearch(!search);
@@ -492,6 +520,10 @@ export default function App() {
           </div>
         </header>
         <main>
+          {isDesktop && desktopRuntime.status === "error" && <div className="error" role="alert">
+            Desktop options are unavailable. {desktopRuntime.message}
+            <div><button onClick={retryDesktopInfo}>Retry desktop options</button></div>
+          </div>}
           <Presence>{search && !view.settings && (
             <Disclosure>
             <SearchField
@@ -722,6 +754,7 @@ export default function App() {
         />
       )}</Presence>
     </div>
+    </DesktopRuntime.Provider>
     </DesktopLayout.Provider>
   );
 }
