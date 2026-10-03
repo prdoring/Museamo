@@ -21,9 +21,8 @@
     "license": "AGPL-3.0-only",
     "licenseFile": "../LICENSE",
     "homepage": "https://github.com/prdoring/Museamo",
-    "shortDescription": "A private stream of thoughts for Android and Windows",
-    "icon": ["icons/icon.ico", "icons/icon.png"],
-    "targets": ["nsis"],
-    "windows": { "webviewInstallMode": { "type": "offlineInstaller" } }
+    "shortDescription": "A private stream of thoughts for your devices",
+    "category": "Productivity",
+    "icon": ["icons/icon.png"]
   }
 }

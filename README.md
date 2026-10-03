@@ -129,7 +129,7 @@ Some optional features use the internet: linked media contacts its host, address
 
 ## Development
 
-The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. Windows uses Tauri with Rust/SQLite storage. Both share a Rust core for local-network sync.
+The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. Desktop uses Tauri with Rust/SQLite storage. Both share a Rust core for local-network sync. Local desktop builds target Windows x64, Apple Silicon macOS, and Linux x64; see [desktop build prerequisites and packaging](docs/desktop-packaging.md).
 
 For a temporary browser preview, install Node.js 22 or newer, then run:
 
@@ -149,7 +149,7 @@ cargo test --workspace
 
 **Release builds happen locally on Windows.** Run `npm run release:signing` once to create and securely save the Android signing key on your PC. After committing a version, `npm run release` loads that key, tests and builds the APK, Windows installer, standalone EXE, and source archive, then pushes the source/tag and publishes the downloads to GitHub Releases. [Release setup, signing backup, and commands](docs/releases.md)
 
-GitHub Actions validates changes and retains test reports. It does not publish release binaries.
+GitHub Actions validates changes and retains test reports and temporary desktop build artifacts. It does not publish releases.
 
 [Contributing](CONTRIBUTING.md) · [Architecture](docs/architecture.md) · [Design system](DESIGN.md) · [Device checklist](docs/device-checklist.md) · [Verification records](docs/verification.md)
 
