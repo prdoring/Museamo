@@ -34,3 +34,5 @@ artifacts-*.png
 *.p12
 *.pfx
 *.pem
+**/.build/
+**/.swiftpm/
