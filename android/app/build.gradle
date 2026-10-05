@@ -5,10 +5,17 @@ apply plugin: 'org.jetbrains.kotlin.kapt'
 // Release secrets stay on the build machine, never in source or CI settings.
 def releaseSigning = ['MUSEAMO_KEYSTORE', 'MUSEAMO_KEY_ALIAS', 'MUSEAMO_STORE_PASSWORD', 'MUSEAMO_KEY_PASSWORD']
 def hasReleaseSigning = releaseSigning.every { System.getenv(it) }
+def ndkOverride = System.getenv('ANDROID_NDK_HOME')
 
 android {
     namespace = "com.prdoring.museamo"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildToolsVersion = '36.0.0'
+    if (ndkOverride) {
+        ndkPath = new File(ndkOverride).isAbsolute() ? ndkOverride : new File(rootProject.projectDir.parentFile, ndkOverride).absolutePath
+    } else {
+        ndkVersion = '30.0.14904198'
+    }
     defaultConfig {
         applicationId "com.prdoring.museamo"
         minSdkVersion rootProject.ext.minSdkVersion

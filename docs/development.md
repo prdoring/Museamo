@@ -22,20 +22,22 @@ npm run test:release
 
 ## Android
 
-Install JDK 21, Android SDK platform 36, build-tools 36.0.0, an Android NDK (currently tested with 30.0.14904198), and Rust's Android targets. Android Studio's bundled JBR works. Set `JAVA_HOME` to the JDK and `ANDROID_HOME` to the SDK. Alternatively, Gradle can locate the SDK through ignored `android/local.properties` (`sdk.dir=...`); the direct sync-core command needs `ANDROID_HOME`.
+Build Android on macOS arm64/x64, Linux x64, or Windows x64. Install JDK 21, Android SDK platform 36, build-tools 36.0.0, NDK 30.0.14904198, and Rust's Android targets. Set `JAVA_HOME` to the JDK and `ANDROID_HOME` to the SDK. Verify Android Studio's bundled JBR is version 21 before using it. Alternatively, Gradle can locate the SDK through ignored `android/local.properties` (`sdk.dir=...`); the direct sync-core command needs `ANDROID_HOME` or an explicit NDK directory.
 
 ```sh
 rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
 npm run android:sync
 cd android
-./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+./gradlew :app:assembleDebug :app:lintDebug
 ```
 
-On Windows use `gradlew.bat`. Gradle's pre-build task builds and packages the Rust sync core. The direct `npm run android:sync-core` command is available when you only need native libraries. The builder uses the newest installed NDK, or `ANDROID_NDK_HOME` when set.
+On Windows use `gradlew.bat`. Gradle's pre-build task builds and packages the Rust sync core. The direct `npm run android:sync-core` command is available when you only need native libraries. The builder uses pinned NDK 30.0.14904198, or `ANDROID_NDK_HOME` when set. Cargo uses locked dependencies and honors `CARGO_TARGET_DIR`. Unselected and stale generated sync-core libraries are removed before building; other JNI libraries are preserved.
 
-The development APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Install it with Android Studio or `adb install -r`. Minimum device: Android 7/API 24, with WebView 105 or newer.
+The development APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Install it with Android Studio or `adb install -r`. Minimum device: Android 7/API 24, with WebView 111 or newer.
 
-For emulator-only development, set `SYNC_ANDROID_ABIS=x86_64`; clear it before making distributable builds. `-PsyncCoreRelease` optimizes native libraries in a debug APK; release builds optimize them automatically. The release command always includes all four ABIs.
+For emulator-only development, set `SYNC_ANDROID_ABIS=x86_64` on Linux/Windows or `arm64-v8a` for an Apple Silicon emulator. Clear it before making distributable builds. `-PsyncCoreRelease` optimizes native libraries in a debug APK; release builds optimize them automatically. The Android release builder always includes all four ABIs.
+
+Signed APKs use the existing `MUSEAMO_KEYSTORE`, `MUSEAMO_KEY_ALIAS`, `MUSEAMO_STORE_PASSWORD`, and `MUSEAMO_KEY_PASSWORD` environment variables. On Unix hosts, import the portable backup of the original signing key. The saved DPAPI credential helper remains Windows-only. A new key cannot update an installation signed with the old one.
 
 With a disposable emulator/device attached:
 
