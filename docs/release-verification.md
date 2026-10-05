@@ -1,5 +1,7 @@
 # Local release preparation verification
 
+This document records the original Windows release verification. Its test counts and combined release commands are historical, not verification of the macOS/Linux changes. See [the portability execution record](portability-plan.md#local-execution-record) for current checks and [release instructions](releases.md) for the separate build, verify, assemble, and publish commands. No tests have been executed by agents during the portability implementation.
+
 Verified on **October 2, 2026**, on x64 Windows, for version **0.4.0**. These checks cover the current working changes; no source push, release upload, or repository visibility change was performed.
 
 ## Passed

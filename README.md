@@ -138,7 +138,7 @@ npm ci
 npm run dev
 ```
 
-The preview resets on refresh and does not save a real library. Use its layout switch for the Windows view. Native builds require the tools in the [development guide](docs/development.md).
+The preview resets on refresh and does not save a real library. Use its layout switch for the Windows view. Native builds require the tools in the [development guide](docs/development.md). The [Mac setup guide](docs/mac-setup.md) covers permanent Rust installation, Android phone installation, and release signing with a key shared through 1Password.
 
 ```sh
 npm run typecheck
@@ -147,7 +147,7 @@ npm run test:release
 cargo test --workspace
 ```
 
-**Release builds happen locally on Windows.** Run `npm run release:signing` once to create and securely save the Android signing key on your PC. After committing a version, `npm run release` loads that key, tests and builds the APK, Windows installer, standalone EXE, and source archive, then pushes the source/tag and publishes the downloads to GitHub Releases. [Release setup, signing backup, and commands](docs/releases.md)
+**Build and publication are separate commands.** `npm run release` checks the source without publishing. Build each desktop package on its native host; Android builds also work on macOS and Linux. Verify each platform, assemble matching artifacts, then explicitly publish the reviewed assembly. Windows can save the Android signing key with `npm run release:signing`; Unix hosts use the original key's portable backup and environment variables. [Release setup, signing backup, and commands](docs/releases.md)
 
 GitHub Actions validates changes and retains test reports and temporary desktop build artifacts. It does not publish releases.
 
