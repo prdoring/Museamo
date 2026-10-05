@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { PaperIcon } from "./PaperIcon";
 import { Download, Upload } from "lucide-react";
 import { bridge, preview, type Library } from "../data";
-import { isPreview, isDesktop, capabilities } from "../platform";
+import { isPreview, isDesktop, capabilities, desktopName, desktopCloseDescription } from "../platform";
+import { useDesktopRuntime } from "./Desktop";
 import { Devices } from "./Devices";
 import { Recovery } from "./Recovery";
 export function Settings({
@@ -17,19 +18,49 @@ export function Settings({
   refresh: () => void;
 }) {
   const [locationEnabled, setLocationEnabled] = useState(false);
+  const runtime = useDesktopRuntime();
+  const desktopInfo = runtime.status === "ready" ? runtime.info : undefined;
   const [startupEnabled, setStartupEnabled] = useState(false);
+  const [startupStatus, setStartupStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [startupUpdating, setStartupUpdating] = useState(false);
+  const [startupAttempt, setStartupAttempt] = useState(0);
   useEffect(() => {
     if (capabilities.automaticLocation) void run(async () => setLocationEnabled((await bridge.locationSettings()).enabled));
-    if (isDesktop) void run(async () => setStartupEnabled((await bridge.getStartupSettings()).enabled));
   }, []);
+  useEffect(() => {
+    if (!isDesktop || !desktopInfo?.startupSupported) return;
+    let disposed = false;
+    setStartupStatus("loading");
+    void bridge.getStartupSettings().then(settings => {
+      if (disposed) return;
+      setStartupEnabled(settings.enabled);
+      setStartupStatus("ready");
+    }).catch(() => { if (!disposed) setStartupStatus("error"); });
+    return () => { disposed = true; };
+  }, [desktopInfo?.startupSupported, startupAttempt]);
   return (
     <div className="settings">
       {!isPreview && <Devices />}
       <Recovery report={report} />
       {isDesktop && <section>
-        <h2>Windows</h2>
-        <label className="startup-setting"><input type="checkbox" checked={startupEnabled} onChange={e => { const enabled = e.target.checked; void run(async () => setStartupEnabled((await bridge.setStartupEnabled({ enabled })).enabled)); }} /> Start Museamo when I sign in</label>
-        <p>Closing the window keeps Museamo in the system tray so linked devices can sync. Choose Quit from the tray menu to stop it.</p>
+        <h2>{desktopInfo ? desktopName(desktopInfo) : "Desktop"}</h2>
+        {runtime.status === "loading" && <p>Loading desktop options...</p>}
+        {runtime.status === "error" && <p>Desktop options could not be loaded. Use Retry desktop options above.</p>}
+        {desktopInfo && <>
+          {desktopInfo.startupSupported ? <>
+            <label className="startup-setting"><input type="checkbox" checked={startupEnabled} disabled={startupStatus !== "ready" || startupUpdating} onChange={e => {
+              const enabled = e.target.checked;
+              setStartupUpdating(true);
+              void run(async () => {
+                try { setStartupEnabled((await bridge.setStartupEnabled({ enabled })).enabled); }
+                finally { setStartupUpdating(false); }
+              });
+            }} /> Start Museamo when I sign in</label>
+            {startupStatus === "loading" && <p className="muted">Checking sign-in settings...</p>}
+            {startupStatus === "error" && <p role="alert">Sign-in settings could not be loaded. <button onClick={() => setStartupAttempt(attempt => attempt + 1)}>Retry sign-in settings</button></p>}
+          </> : <p className="muted">Starting at sign-in is unavailable in this app session.</p>}
+          <p>{desktopCloseDescription(desktopInfo)}</p>
+        </>}
       </section>}
       {capabilities.automaticLocation && <section>
         <h2>Post locations</h2>

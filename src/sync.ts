@@ -21,7 +21,15 @@ export interface SyncState {
   removals?: { id: string; subject: string; pendingDevices: string[]; removalPending: boolean }[];
 }
 export interface RecoveryItem { id: string; kind: string; entityId: string; payload: Entry | Tag; createdAt: number }
+/** Native runtime capabilities; preview never claims access to an installed app. */
+export interface DesktopInfo {
+  os: "windows" | "macos" | "linux" | "preview";
+  startupSupported: boolean;
+  windowControls: "native" | "custom";
+  closeBehavior: "background" | "quit";
+}
 export interface CompanionBridge {
+  getDesktopInfo(): Promise<DesktopInfo>;
   getSyncState(): Promise<SyncState>;
   listDevices(): Promise<{ devices: SyncDevice[]; nearby?: SyncDevice[] }>;
   linkDevice(input: { address: string }): Promise<unknown>;

@@ -1,6 +1,7 @@
 import { PaperIcon } from "./PaperIcon";
 import { Hash, MapPin} from "lucide-react";
-import { useDesktopLayout } from "./Desktop";
+import { useDesktopLayout, useDesktopRuntime } from "./Desktop";
+import { shortcutModifier } from "../platform";
 export type Tab = "stream" | "gems" | "tags" | "map";
 export function Navigation({
   tab,
@@ -18,10 +19,13 @@ export function Navigation({
   openSettings?: () => void;
 }) {
   const desktop = useDesktopLayout();
+  const runtime = useDesktopRuntime();
+  const captureTitle = tagName ? `Message #${tagName}...` : "Message yourself...";
+  const shortcut = desktop && runtime.status === "ready" ? ` (${shortcutModifier(runtime.info)}+N)` : "";
   return (
     <footer className="bottom-dock">
       {(desktop || (!settings && (tab !== "tags" || !!tagName))) && (
-        <button className="capture-bar" onClick={compose} title={tagName ? `Message #${tagName}…` : "Message yourself…"}>
+        <button className="capture-bar" onClick={compose} title={captureTitle + shortcut}>
           <PaperIcon name="plus" size={21} />
           <span>{tagName ? `Message #${tagName}…` : "Message yourself…"}</span>
           <span className="send-symbol">

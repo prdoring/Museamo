@@ -360,6 +360,7 @@ const resolveAttachments = (ids: string[]) => {
 };
 let previewLocationEnabled = true;
 const browser: MuseamoBridge = {
+  async getDesktopInfo() { return { os: "preview", startupSupported: false, windowControls: "custom", closeBehavior: "quit" }; },
   async getTagShareState({ tagId }) { const tag = tags.find(t => t.id === tagId); return tag?.sharing ? { ...tag.sharing, members: [{ id: "preview-owner", name: "Your preview", owner: true, you: true }] } : { collectionId: null }; },
   async startTagSharing({ tagId }) { mutation(); const tag = tags.find(t => t.id === tagId); if (!tag) throw new Error("Tag no longer exists."); if (entries.some(e => e.tagIds.includes(tagId) && tags.some(t => t.sharing && e.tagIds.includes(t.id)))) throw new Error("Some thoughts already belong to another shared list."); const collectionId = crypto.randomUUID(); tag.sharing = { collectionId, role: "owner", status: "waiting" }; changed(); return { collectionId }; },
   async createTagInvite() { throw new Error("QR invitations are available in the installed Android app. This preview is temporary."); },
@@ -373,7 +374,7 @@ const browser: MuseamoBridge = {
   async syncTagShare() { throw new Error("Local-network sync is available in the installed app."); },
   async getSyncState() { return { enabled: false, phase: "idle", devices: [], nearby: [] }; },
   async listDevices() { return { devices: [], nearby: [] }; },
-  async linkDevice() { throw new Error("Link devices from the installed Android or Windows app."); },
+  async linkDevice() { throw new Error("Link devices from the installed Android or desktop app."); },
   async confirmPairing() { throw new Error("Device linking is unavailable in the preview."); },
   async acceptEnrollment() { throw new Error("Device linking is unavailable in the preview."); },
   async syncNow() { throw new Error("Device linking is unavailable in the preview."); },
@@ -389,7 +390,7 @@ const browser: MuseamoBridge = {
   async clearRecovery({ id }) { deletedMedia.delete(id); collectBrowserMedia(); changed(); },
   async clearAllRecovery() { deletedMedia.clear(); collectBrowserMedia(); changed(); },
   async getStartupSettings() { return { enabled: false }; },
-  async setStartupEnabled() { throw new Error("Startup settings are available in the Windows app."); },
+  async setStartupEnabled() { throw new Error("Startup settings are available in the installed desktop app."); },
   async commitDraft({ draft }) { return { entryId: preview.save(draft) }; },
   async openLocation({ latitude, longitude }) { await browser.openExternal({ url: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}` }); },
   async locationSettings() { return { enabled: previewLocationEnabled, permitted: true }; },
