@@ -24,7 +24,14 @@ test('Windows-compatible CSR and P12 flow preserves keys and rejects mismatched 
     assert.equal(spawnSync(openssl, ['req', '-in', csr, '-verify', '-noout']).status, 0);
     assert.throws(() => createRequest({ openssl, destination: directory, passphrase }), /already exists/);
     const cert = path.join(directory, 'test.cer');
-    const result = spawnSync(openssl, ['x509', '-req', '-in', csr, '-signkey', path.join(directory, 'distribution.key.pem'), '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-days', '1', '-outform', 'DER', '-out', cert, '-subj', '/CN=Apple Distribution: Test Only (ABCDE12345)'], { env: { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase } });
+    const fixtureRequest = path.join(directory, 'test-distribution.csr');
+    const keyOptions = ['-key', path.join(directory, 'distribution.key.pem'), '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD'];
+    const fixtureEnv = { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase };
+    // Apple's LibreSSL x509 lacks -subj; put the fixture subject in a CSR
+    // using req, which supports this on both Windows OpenSSL and macOS.
+    const requestResult = spawnSync(openssl, ['req', '-new', ...keyOptions, '-subj', '/CN=Apple Distribution: Test Only (ABCDE12345)', '-out', fixtureRequest], { env: fixtureEnv });
+    assert.equal(requestResult.status, 0, requestResult.stderr?.toString());
+    const result = spawnSync(openssl, ['x509', '-req', '-in', fixtureRequest, '-signkey', path.join(directory, 'distribution.key.pem'), '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-days', '1', '-outform', 'DER', '-out', cert], { env: fixtureEnv });
     assert.equal(result.status, 0, result.stderr?.toString());
     const p12 = packageCertificate({ openssl, destination: directory, certificatePath: cert, passphrase });
     assert.equal(spawnSync(openssl, ['pkcs12', '-in', p12, '-noout', '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD'], { env: { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase } }).status, 0);
