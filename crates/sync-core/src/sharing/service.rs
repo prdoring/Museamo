@@ -172,8 +172,11 @@ impl ShareService {
                 }
             }
         });
-        if let Err(error) = self.discovery(address.port()) {
-            self.error(format!("Shared-list discovery unavailable: {error}"));
+        // A loopback listener cannot accept connections on advertised LAN addresses.
+        if !address.ip().is_loopback() {
+            if let Err(error) = self.discovery(address.port()) {
+                self.error(format!("Shared-list discovery unavailable: {error}"));
+            }
         }
         let owner = self.clone();
         thread::spawn(move || {
@@ -1750,6 +1753,11 @@ mod tests {
             self.service.stop();
             self.personal.stop();
         }
+    }
+    #[test]
+    fn loopback_listener_does_not_advertise_unreachable_lan_addresses() {
+        let phone = Phone::new(39);
+        assert!(phone.service.mdns.lock().unwrap().is_none());
     }
     #[test]
     fn an_unknown_person_cannot_send_a_collection_body_before_authorization() {

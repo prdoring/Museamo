@@ -15,12 +15,32 @@ class SharingStorageTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private lateinit var db: MuseamoDatabase
     private lateinit var repo: Repository
-    @Before fun setup() { db = Room.inMemoryDatabaseBuilder(context, MuseamoDatabase::class.java).build(); repo = Repository(db); repo.rawDao.putSyncMetadata(SyncMetadataRow("group", "personal-group")) }
+    private lateinit var proof: JSONObject
+    @Before fun setup() {
+        assertTrue("Bundled Rust JNI library must load", SyncCore.available())
+        db = Room.inMemoryDatabaseBuilder(context, MuseamoDatabase::class.java).build()
+        repo = Repository(db)
+        val signer = SyncIdentity(context)
+        SyncJournal.configure(signer)
+        val member = signer.identity(repo).apply { remove("noisePrivate") }
+        repo.rawDao.putSyncMetadata(SyncMetadataRow("group", "personal-group"))
+        // Storage fixtures need the same signed device membership as real shared lists.
+        val body = JSONObject().put("version", 1).put("group", "personal-group")
+            .put("issuer", member.getString("deviceId")).put("parents", JSONArray())
+            .put("kind", "genesis").put("data", member)
+        val bytes = SyncCore.request(JSONObject().put("action", "canonical").put("value", body)).getString("bytes")
+        val control = JSONObject().put("body", body)
+            .put("id", SyncCore.request(JSONObject().put("action", "hash").put("value", body)).getString("hash"))
+            .put("signature", signer.sign("museamo-membership-v1\u0000".toByteArray(Charsets.UTF_8) + SyncIdentity.decode(bytes)))
+        proof = JSONObject().put("group", "personal-group").put("controls", JSONArray().put(control))
+        assertTrue(SyncCore.request(JSONObject().put("action", "sharingDeviceActive").put("proof", proof)
+            .put("personal", JSONObject()).put("device", member.getString("deviceId"))).getBoolean("active"))
+    }
     @After fun cleanup() { db.close() }
     private fun share(tag: TagRow, scope: String = uid()) {
         val state = ShareStorage.registry(repo.rawDao)
         val control = JSONObject().put("id", scope).put("body", JSONObject().put("kind", "open").put("participant", "personal-group").put("data", JSONObject().put("participant", "personal-group").put("tag", tag.json())))
-        state.getJSONObject("scopes").put(scope, JSONObject().put("id", scope).put("controls", JSONArray().put(control)).put("proofs", JSONObject()).put("records", JSONArray()))
+        state.getJSONObject("scopes").put(scope, JSONObject().put("id", scope).put("controls", JSONArray().put(control)).put("proofs", JSONObject().put("personal-group", proof)).put("records", JSONArray()))
         state.getJSONObject("bindings").put(scope, JSONObject().put("tagId", tag.id).put("grant", scope).put("detached", false).put("entries", JSONObject()))
         repo.rawDao.putSharingState(ShareStateRow("registry", state.toString()))
     }
@@ -68,6 +88,16 @@ class SharingStorageTest {
         val tag=repo.saveTag(null,"Movies");val row=repo.commitDraft(repo.draft("existing",null,null).copy(text="Arrival"));share(tag)
         repo.edit(row.id,"Arrival",listOf(tag.id))
         val pending=JSONObject(repo.rawDao.sharingPending().single().payload);assertEquals(row.id,pending.getString("entityId"));assertFalse(pending.getBoolean("deleted"));assertEquals("Arrival",pending.getJSONObject("payload").getString("text"))
+    }
+    @Test fun unadmittedDeviceCannotSaveToSharedHashtag() {
+        val tag = repo.saveTag(null, "Movies"); share(tag)
+        repo.rawDao.putSyncMetadata(SyncMetadataRow("device", "unadmitted-${uid()}"))
+        val draft = repo.draft("unadmitted", null, null).copy(text = "Arrival", tagIds = jsonIds(listOf(tag.id)))
+        repo.saveDraft(draft)
+        try { repo.commitDraft(draft); fail("An unadmitted device must not publish shared writing") }
+        catch (error: IllegalArgumentException) { assertTrue(error.message!!.contains("no longer belong")) }
+        assertEquals("Arrival", repo.dao.draft("unadmitted")!!.text)
+        assertTrue(repo.dao.entries().isEmpty()); assertTrue(repo.rawDao.sharingPending().isEmpty())
     }
     @Test fun removingSharedTagImmediatelyKeepsOnlyAFreshPrivateCopy() {
         val tag=repo.saveTag(null,"Movies");val scope=uid();share(tag,scope);val row=repo.commitDraft(repo.draft("detach",null,null).copy(text="Arrival",tagIds=jsonIds(listOf(tag.id))))
