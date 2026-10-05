@@ -227,6 +227,8 @@ fn real_sqlite_noise_three_devices_saved_edits_originals_recovery_and_restart() 
     assert_eq!(resumed.db.lock().unwrap().device, device_id);
     assert!(resumed.state()["devices"].as_array().unwrap().len() >= 2);
     let after = resumed.append("Saved after native restart");
+    // Match native saves: startup sync may have exported before this commit.
+    resumed.sync.local_data_changed().unwrap();
     resumed
         .sync
         .command("linkDevice", json!({"address":b.state()["address"]}))
