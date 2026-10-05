@@ -22,6 +22,8 @@ The committed Xcode project uses Swift Package Manager: Capacitor 8.5.2 and the 
 
 For physical-device signing, installation, and manual checks, follow the [iPhone device checklist](ios-device-checklist.md). The repository defaults to `com.prdoring.museamo` and does not commit a signing team or credentials. Signed installation and hardware behavior remain an owner-run handoff.
 
+For installation from a Windows development machine, follow [the TestFlight setup guide](testflight-setup.md). The manually triggered `iPhone TestFlight` GitHub workflow signs and exports an iPhone Release build using encrypted Actions secrets; upload to Apple is a separate checkbox. Regular CI checks an unsigned Release archive without accessing signing credentials.
+
 ## Checks
 
 ```sh

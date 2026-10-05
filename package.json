@@ -19,6 +19,8 @@
     "ios:build": "npm run ios:sync && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData CODE_SIGNING_ALLOWED=NO build",
     "ios:launch": "node scripts/run-ios-simulator.mjs",
     "ios:run": "npm run ios:build && npm run ios:launch",
+    "ios:signing": "node scripts/ios-signing.mjs",
+    "test:ios:distribution": "node --test scripts/ios-testflight.test.mjs scripts/ios-signing.test.mjs",
     "desktop:dev": "node scripts/desktop.mjs dev",
     "desktop:build": "node scripts/desktop.mjs build",
     "desktop:doctor": "node scripts/desktop-doctor.mjs",

@@ -1,0 +1,76 @@
+name: iPhone TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload the signed build to Apple TestFlight
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: museamo-testflight
+  cancel-in-progress: false
+
+jobs:
+  distribute:
+    # Secrets and uploads are available only to a manually selected main build.
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check signing configuration
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          ASC_API_KEY_BASE64: ${{ inputs.upload && secrets.ASC_API_KEY_BASE64 || '' }}
+          ASC_KEY_ID: ${{ inputs.upload && secrets.ASC_KEY_ID || '' }}
+          ASC_ISSUER_ID: ${{ inputs.upload && secrets.ASC_ISSUER_ID || '' }}
+          TESTFLIGHT_UPLOAD: ${{ inputs.upload }}
+        run: node scripts/ios-testflight.mjs check
+      - run: npm ci
+      - run: npm run test:ios:distribution
+      - run: npm test
+      - run: npm run test:ios
+      - name: Build and sync the iPhone interface
+        run: npm run ios:sync
+      - name: Sign and export the iPhone app
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: node scripts/ios-testflight.mjs build
+      - name: Keep the signed package and build record
+        uses: actions/upload-artifact@v4
+        with:
+          name: museamo-iphone-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/museamo-testflight/export/*.ipa
+            ${{ runner.temp }}/museamo-testflight/build-record.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Validate and upload to Apple
+        if: inputs.upload
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: node scripts/ios-testflight.mjs upload
+      - name: Remove temporary signing credentials
+        if: always()
+        run: node scripts/ios-testflight.mjs cleanup

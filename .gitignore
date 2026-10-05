@@ -34,5 +34,12 @@ artifacts-*.png
 *.p12
 *.pfx
 *.pem
+*.p8
+*.mobileprovision
+*.certSigningRequest
+*.csr
+*.cer
+*.xcarchive/
+*.ipa
 **/.build/
 **/.swiftpm/
