@@ -186,7 +186,7 @@ public final class LibraryStore {
         if let profile {
             defaults = (profile["mode"] as? String) == "picker" ? [profile["selectedTagId"] as? String].compactMap { $0 } : try strings(profile, "tagIds")
         } else { defaults = tagID.map { [$0] } ?? [] }
-        let draft: [String: Any] = ["profileKey": key, "entryId": uid(), "text": "", "tagIds": try validTags(defaults), "profileId": profileID as Any? ?? null, "attachments": [Any](), "location": null, "locationAttempted": false]
+        let draft: [String: Any] = ["profileKey": key, "entryId": uid(), "text": "", "tagIds": try validTags(defaults), "profileId": jsonString(profileID), "attachments": [Any](), "location": null, "locationAttempted": false]
         try putDraft(draft)
         return draft
     }
@@ -272,7 +272,8 @@ public final class LibraryStore {
         let mode = try string(input, "mode")
         guard ["fixed", "picker"].contains(mode) else { throw LibraryError("Unknown widget mode.") }
         let selected = try optionalString(input, "selectedTagId")
-        let row: [String: Any] = ["id": id, "label": label, "mode": mode, "tagIds": try validTags(strings(input, "tagIds")), "selectedTagId": try selected.flatMap { try validTags([$0]).first } as Any? ?? null]
+        let selectedTagID = try selected.flatMap { try validTags([$0]).first }
+        let row: [String: Any] = ["id": id, "label": label, "mode": mode, "tagIds": try validTags(strings(input, "tagIds")), "selectedTagId": jsonString(selectedTagID)]
         try db.run("INSERT INTO profiles(id,payload) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", [id, try encode(row)])
     }
 
@@ -283,7 +284,7 @@ public final class LibraryStore {
         let text = try string(input, "text", allowEmpty: true)
         try nonblank(text)
         let profileID = try optionalString(input, "profileId")
-        let profile: Any = try profileID.flatMap { try record("profiles", key: "id", id: $0) == nil ? nil : $0 } as Any? ?? null
+        let profile = jsonString(try profileID.flatMap { try record("profiles", key: "id", id: $0) == nil ? nil : $0 })
         let row: [String: Any] = ["id": id, "text": text, "createdAt": try timestamp(input, "createdAt"), "updatedAt": milliseconds(), "starred": try boolean(input, "starred"), "completed": try boolean(input, "completed"), "tagIds": try validTags(strings(input, "tagIds")), "profileId": profile, "attachments": [Any](), "location": null, "revision": uid()]
         try putEntry(row)
         return id
@@ -332,6 +333,10 @@ public final class LibraryStore {
     }
     private func encode(_ value: [String: Any]) throws -> String {
         String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), as: UTF8.self)
+    }
+    private func jsonString(_ value: String?) -> Any {
+        if let value { return value }
+        return null
     }
     private func decode(_ value: Any?) throws -> [String: Any] {
         guard let text = value as? String, let result = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any] else { throw LibraryError("Library contains an invalid record.") }

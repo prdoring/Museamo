@@ -166,6 +166,37 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertTrue(profiles.first?["selectedTagId"] is NSNull)
     }
 
+    func testOptionalProfileFieldsRemainJSONCompatibleAcrossReopen() throws {
+        let store = try LibraryStore(databaseURL: databaseURL)
+        try store.execute(method: "saveTag", input: ["id": "tag", "name": "Movies"])
+        for (id, selected) in [("selected", "tag" as Any), ("missing", "unknown" as Any), ("empty", NSNull() as Any)] {
+            try store.execute(method: "saveProfile", input: ["profile": ["id": id, "label": id, "mode": "picker", "tagIds": ["tag"], "selectedTagId": selected]])
+            let value = try draft(store)
+            XCTAssertTrue(value["profileId"] is NSNull)
+            let profileDraft = try XCTUnwrap(store.execute(method: "getDraft", input: ["profileId": id])["draft"] as? [String: Any])
+            XCTAssertEqual(profileDraft["profileId"] as? String, id)
+            XCTAssertTrue(JSONSerialization.isValidJSONObject(profileDraft))
+        }
+        let reopened = try LibraryStore(databaseURL: databaseURL)
+        let library = try reopened.execute(method: "library")
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(library))
+        let profiles = try XCTUnwrap(library["profiles"] as? [[String: Any]])
+        XCTAssertEqual(profiles.first { $0["id"] as? String == "selected" }?["selectedTagId"] as? String, "tag")
+        for id in ["missing", "empty"] {
+            XCTAssertTrue(profiles.first { $0["id"] as? String == id }?["selectedTagId"] is NSNull)
+        }
+        let saved = try entry(store, save(store, text: "Restore me"))
+        for profileID in ["selected", "unknown"] {
+            var input = saved
+            input["profileId"] = profileID
+            let restoredID = try XCTUnwrap(reopened.execute(method: "restoreEntry", input: ["entry": input])["entryId"] as? String)
+            let restored = try entry(reopened, restoredID)
+            if profileID == "selected" { XCTAssertEqual(restored["profileId"] as? String, profileID) }
+            else { XCTAssertTrue(restored["profileId"] is NSNull) }
+            XCTAssertTrue(JSONSerialization.isValidJSONObject(restored))
+        }
+    }
+
     func testSharedHashtagFixtures() throws {
         let fixture = try XCTUnwrap(Bundle.module.url(forResource: "hashtags", withExtension: "json", subdirectory: "Fixtures"))
         let cases = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [[String: Any]])
