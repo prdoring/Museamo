@@ -25,16 +25,16 @@ test('Windows-compatible CSR and P12 flow preserves keys and rejects mismatched 
     assert.throws(() => createRequest({ openssl, destination: directory, passphrase }), /already exists/);
     const cert = path.join(directory, 'test.cer');
     const fixtureRequest = path.join(directory, 'test-distribution.csr');
-    const keyOptions = ['-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-key', path.join(directory, 'distribution.key.pem')];
-    const fixtureEnv = { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase };
+    const keyOptions = ['-passin', 'stdin', '-key', path.join(directory, 'distribution.key.pem')];
+    const fixtureOptions = { input: `${passphrase}\n` };
     // Apple's LibreSSL x509 lacks -subj; put the fixture subject in a CSR
     // using req, which supports this on both Windows OpenSSL and macOS.
-    const requestResult = spawnSync(openssl, ['req', '-new', ...keyOptions, '-subj', '/CN=Apple Distribution: Test Only (ABCDE12345)', '-out', fixtureRequest], { env: fixtureEnv });
+    const requestResult = spawnSync(openssl, ['req', '-new', ...keyOptions, '-subj', '/CN=Apple Distribution: Test Only (ABCDE12345)', '-out', fixtureRequest], fixtureOptions);
     assert.equal(requestResult.status, 0, requestResult.stderr?.toString());
-    const result = spawnSync(openssl, ['x509', '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-req', '-in', fixtureRequest, '-signkey', path.join(directory, 'distribution.key.pem'), '-days', '1', '-outform', 'DER', '-out', cert], { env: fixtureEnv });
+    const result = spawnSync(openssl, ['x509', '-passin', 'stdin', '-req', '-in', fixtureRequest, '-signkey', path.join(directory, 'distribution.key.pem'), '-days', '1', '-outform', 'DER', '-out', cert], fixtureOptions);
     assert.equal(result.status, 0, result.stderr?.toString());
     const p12 = packageCertificate({ openssl, destination: directory, certificatePath: cert, passphrase });
-    assert.equal(spawnSync(openssl, ['pkcs12', '-in', p12, '-noout', '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD'], { env: { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase } }).status, 0);
+    assert.equal(spawnSync(openssl, ['pkcs12', '-in', p12, '-noout', '-passin', 'stdin'], fixtureOptions).status, 0);
     assert.throws(() => packageCertificate({ openssl, destination: directory, certificatePath: cert, passphrase }), /already exists/);
     rmSync(p12);
     const other = path.join(directory, 'other');

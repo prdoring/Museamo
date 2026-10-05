@@ -74,7 +74,7 @@ export function createRequest({ openssl, destination, passphrase }) {
   const config = path.join(destination, 'request.cnf');
   writeFileSync(config, '[req]\nprompt=no\ndistinguished_name=identity\n[identity]\nCN=Museamo Distribution\n', { mode: 0o600 });
   try {
-    run(openssl, ['req', '-new', '-newkey', 'rsa:2048', '-sha256', '-keyout', key, '-out', csr, '-config', config, '-passout', 'env:MUSEAMO_IOS_KEY_PASSWORD'], { env: { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase } });
+    run(openssl, ['req', '-new', '-newkey', 'rsa:2048', '-sha256', '-keyout', key, '-out', csr, '-config', config, '-passout', 'stdin'], { input: `${passphrase}\n` });
   } finally { rmSync(config, { force: true }); }
   return csr;
 }
@@ -93,7 +93,7 @@ export function packageCertificate({ openssl, destination, certificatePath, pass
   writeFileSync(pem, certificate.toString(), { mode: 0o600 });
   try {
     // Explicit algorithms remain compatible with Apple's security import tool.
-    run(openssl, ['pkcs12', '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-passout', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-export', '-inkey', keyPath, '-in', pem, '-out', p12, '-name', 'Museamo Apple Distribution', '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES', '-macalg', 'sha1'], { env: { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase } });
+    run(openssl, ['pkcs12', '-passin', 'stdin', '-passout', 'stdin', '-export', '-inkey', keyPath, '-in', pem, '-out', p12, '-name', 'Museamo Apple Distribution', '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES', '-macalg', 'sha1'], { input: `${passphrase}\n${passphrase}\n` });
   } finally { rmSync(pem, { force: true }); }
   return p12;
 }
@@ -114,7 +114,7 @@ async function configure() {
   validateUploadConfig(apiEnv);
   const passphrase = await password('Signing key/P12 password');
   assertPassword(passphrase);
-  run(findOpenSSL(), ['pkcs12', '-in', path.join(directory, 'distribution.p12'), '-noout', '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD'], { env: { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase } });
+  run(findOpenSSL(), ['pkcs12', '-in', path.join(directory, 'distribution.p12'), '-noout', '-passin', 'stdin'], { input: `${passphrase}\n` });
   // Use standard input; secret bodies are never command arguments or output.
   const secrets = { IOS_DISTRIBUTION_P12_BASE64: p12.toString('base64'), IOS_DISTRIBUTION_P12_PASSWORD: passphrase, IOS_PROVISIONING_PROFILE_BASE64: profile.toString('base64'), ...apiEnv };
   for (const [name, value] of Object.entries(secrets)) {
