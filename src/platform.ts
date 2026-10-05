@@ -1,13 +1,29 @@
 import { Capacitor } from "@capacitor/core";
 import type { DesktopInfo } from "./sync";
 
-export type Platform = "android" | "desktop" | "preview";
+export type Platform = "android" | "ios" | "desktop" | "preview";
 declare global { interface Window { __TAURI_INTERNALS__?: unknown } }
-export const platform: Platform = Capacitor.isNativePlatform() ? "android"
-  : typeof window !== "undefined" && "__TAURI_INTERNALS__" in window ? "desktop" : "preview";
+export function detectPlatform(capacitorPlatform: string, desktop: boolean): Platform {
+  if (capacitorPlatform === "android" || capacitorPlatform === "ios") return capacitorPlatform;
+  return desktop ? "desktop" : "preview";
+}
+export const platform = detectPlatform(Capacitor.getPlatform(), typeof window !== "undefined" && "__TAURI_INTERNALS__" in window);
 export const isPreview = platform === "preview";
 export const isDesktop = platform === "desktop";
-export const capabilities = { nativeCapture: platform === "android", widgets: platform === "android", automaticLocation: platform !== "desktop" };
+export function platformCapabilities(platform: Platform) {
+  return {
+    nativeCapture: platform === "android",
+    widgets: platform === "android",
+    automaticLocation: platform === "android" || platform === "preview",
+    location: platform !== "ios",
+    media: platform !== "ios",
+    backups: platform !== "ios",
+    sync: platform === "android" || platform === "desktop",
+    sharing: platform !== "ios",
+    recovery: true,
+  };
+}
+export const capabilities = platformCapabilities(platform);
 
 export type DesktopRuntimeState =
   | { status: "loading" }

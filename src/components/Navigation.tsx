@@ -1,7 +1,7 @@
 import { PaperIcon } from "./PaperIcon";
 import { Hash, MapPin} from "lucide-react";
 import { useDesktopLayout, useDesktopRuntime } from "./Desktop";
-import { shortcutModifier } from "../platform";
+import { capabilities, shortcutModifier } from "../platform";
 export type Tab = "stream" | "gems" | "tags" | "map";
 export function Navigation({
   tab,
@@ -34,7 +34,7 @@ export function Navigation({
         </button>
       )}
       <nav aria-label="Main navigation">
-        {(["stream", "gems", "tags", "map"] as Tab[]).map((next) => (
+        {(["stream", "gems", "tags", ...(capabilities.location ? ["map"] : [])] as Tab[]).map((next) => (
           <button
             key={next}
             aria-current={!settings && next === tab ? "page" : undefined}

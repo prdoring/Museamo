@@ -40,8 +40,8 @@ export function Settings({
   }, [desktopInfo?.startupSupported, startupAttempt]);
   return (
     <div className="settings">
-      {!isPreview && <Devices />}
-      <Recovery report={report} />
+      {capabilities.sync && <Devices />}
+      {capabilities.recovery && <Recovery report={report} />}
       {isDesktop && <section>
         <h2>{desktopInfo ? desktopName(desktopInfo) : "Desktop"}</h2>
         {runtime.status === "loading" && <p>Loading desktop options...</p>}
@@ -107,7 +107,7 @@ export function Settings({
           <p className="muted">Your widgets will appear here.</p>
         )}
       </section>}
-      <section>
+      {capabilities.backups && <section>
         <h2>Backup</h2>
         <p>
           Export a ZIP archive with your thoughts, Recovery, original photos/videos, tags, and widget settings. Older JSON backups can still be imported. Imports keep
@@ -139,14 +139,14 @@ export function Settings({
             Import
           </button>
         </div>
-      </section>
+      </section>}
       <section>
         <h2>About & storage</h2>
         <p>Museamo · a place for your thoughts.</p>
         <p className="muted">
-          Original attachments stay in your local library and sync directly with devices you link. Linked media loads from its host when visible. No account or cloud sync. Removing
-          app data deletes your library; export a backup first.
+          {capabilities.media ? "Original attachments stay in your local library and sync directly with devices you link. Linked media loads from its host when visible. No account or cloud sync. Removing app data deletes your library; export a backup first." : "Your thoughts, tags, and drafts are saved on this device. Removing app data deletes your library."}
         </p>
+        {!capabilities.backups && <p className="muted">Photos, locations, backups, linked devices, and shared hashtags are not available in this iOS build yet.</p>}
       </section>
       {isPreview && (
         <section>

@@ -5,6 +5,7 @@ import { mediaLinks, type Attachment, type MediaLink } from "../media";
 import { PhotoViewer } from "./PhotoViewer";
 import { ImagePlus, X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { capabilities } from "../platform";
 
 function useVisible() {
   const ref = useRef<HTMLDivElement>(null);
@@ -75,6 +76,9 @@ function MediaItem({ attachment, link, open }: { attachment?: Attachment; link?:
 }
 
 export function MediaGallery({ attachments = [], text = "" }: { attachments?: Attachment[]; text?: string }) {
+  return capabilities.media ? <AvailableMediaGallery attachments={attachments} text={text} /> : null;
+}
+function AvailableMediaGallery({ attachments = [], text = "" }: { attachments?: Attachment[]; text?: string }) {
   const links = useMemo(() => mediaLinks(text), [text]);
   const [viewing, setViewing] = useState<number>();
   const images = useMemo(() => [...attachments.filter(a => a.kind === "image"), ...links.filter(l => l.kind === "image")], [attachments, links]);
@@ -96,6 +100,7 @@ export function AttachmentEditor({ attachments, disabled, change, report, import
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   async function pick() {
+    if (!capabilities.media) return;
     importing(true); report("");
     try {
       const result = await bridge.pickMedia({ remaining: 10 - attachments.length });
@@ -105,6 +110,7 @@ export function AttachmentEditor({ attachments, disabled, change, report, import
     } catch (e) { if (mounted.current) report(e instanceof Error ? e.message : "Could not import media. Try again."); }
     finally { if (mounted.current) importing(false); }
   }
+  if (!capabilities.media) return null;
   return <div className="attachment-editor">
     {toolbar && createPortal(<button className="composer-icon" type="button" aria-label="Attach photos/videos" title="Attach photos/videos" disabled={disabled || attachments.length >= 10} onClick={() => void pick()}><ImagePlus size={22} /></button>, toolbar)}
     <MotionList className="attachment-rail" scope="attachments" items={attachments.map(a => ({ key: a.id, content: <div className="attachment-tile">

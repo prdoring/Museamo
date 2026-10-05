@@ -664,7 +664,7 @@ export default function App() {
                   className="icon-button"
                   aria-label="Dismiss deletion"
                   onClick={() =>
-                    { void bridge.releaseDeleted({ id: e.id }).catch(failure); setDeleted((old) => old.filter((d) => d.id !== e.id)); }
+                    { if (capabilities.media) void bridge.releaseDeleted({ id: e.id }).catch(failure); setDeleted((old) => old.filter((d) => d.id !== e.id)); }
                   }
                 >
                   <PaperIcon name="close" size={17} />
