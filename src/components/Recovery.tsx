@@ -3,6 +3,7 @@ import { bridge, type Entry, type Tag } from "../data";
 import type { RecoveryItem } from "../sync";
 import { MediaGallery } from "./Media";
 import { FormattedText } from "./FormattedText";
+import { capabilities } from "../platform";
 
 export function Recovery({ report }: { report: (message: string) => void }) {
   const [items, setItems] = useState<RecoveryItem[]>();
@@ -26,12 +27,12 @@ export function Recovery({ report }: { report: (message: string) => void }) {
   }
   return <section aria-labelledby="recovery-title">
     <h2 id="recovery-title">Recovery</h2>
-    <p>Deleted thoughts and earlier versions stay here until you clear them. Restoring saves a separate thought. Recovery and permanent clearing sync across your linked devices.</p>
+    <p>Deleted thoughts and earlier versions stay here until you clear them. Restoring saves a separate thought.{capabilities.sync && " Recovery and permanent clearing sync across your linked devices."}</p>
     {error && <p className="error" role="alert">{error} <button onClick={() => void refresh()}>Retry</button></p>}
     {!items && !error && <p role="status">Loading Recovery…</p>}
     {items?.length === 0 && <p className="muted">Nothing in Recovery.</p>}
     {clearing && <div className="sync-confirm" role="group" aria-label="Confirm permanent clearing">
-      <p>{clearing === "all" ? "Permanently clear all versions in Recovery?" : "Permanently clear this version?"} Clearing spreads to your linked devices when they reconnect. This cannot be undone.</p>
+      <p>{clearing === "all" ? "Permanently clear all versions in Recovery?" : "Permanently clear this version?"}{capabilities.sync && " Clearing spreads to your linked devices when they reconnect."} This cannot be undone.</p>
       <div className="action-row"><button className="secondary" disabled={busy} onClick={() => setClearing(undefined)}>Keep in Recovery</button><button className="secondary danger" disabled={busy} onClick={() => void run(() => clearing === "all" ? bridge.clearAllRecovery() : bridge.clearRecovery({ id: clearing.id }), "Recovery cleared.")}>Clear permanently</button></div>
     </div>}
     {items?.map(item => {

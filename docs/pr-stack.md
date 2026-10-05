@@ -83,3 +83,29 @@ cargo test --workspace --locked -- --test-threads=1
 ```
 
 On the configured Android host, also sync assets and run Gradle unit/lint checks. Keep connected instrumentation tests on a disposable emulator/device. Before merging each PR, run its relevant suites against that PR's head; a passing final stack does not by itself establish that every intermediate commit passes. Native behavior, credential recovery, signing, and cross-device sync remain the acceptance checks in [desktop packaging](desktop-packaging.md) and [Mac setup](mac-setup.md).
+
+## iOS follow-up
+
+The next work package is `pr/ios-offline-foundation`: a native offline text library and iPhone host, followed by local UI tests, CI, and a hardware-testing handoff. The [draft PR description](ios-pr-description.md) and [verification record](ios-verification.md) describe this scope. Rust iOS sync diagnostics remain on the separate `work/ios-initial-snapshot` preservation branch.
+
+At the October 4, 2026 fetch, `origin/main` is `654712a` and contains PR #1. PRs #2–#5 were merged into their stacked base branches, so their changes have not all reached `main`. `origin/pr/desktop-packaging-ci` at `5ab8830` contains the complete earlier stack, including PR #5. The consolidation branch `pr/consolidate-platform-foundation` points to that same commit and targets `main`. The draft iOS PR targets the consolidation branch to keep the review limited to iOS work. Merge the consolidation first; these instructions do not authorize merging either PR.
+
+The iOS branch is stacked on `pr/consolidate-platform-foundation`. Its dependency boundary is `5ab8830` (the merge of PR #5 into the packaging branch). The five commits after that boundary contain:
+
+1. Transactional Swift SQLite storage and repository tests.
+2. The iOS host, Capacitor bridge, platform capabilities, and simulator build/launch commands.
+3. Local persistence UI tests and their Xcode target.
+4. Swift tests and an unsigned simulator build in CI; UI tests remain local.
+5. Development instructions, verification screenshots, and physical-iPhone handoff.
+
+Once the earlier stack has reached `main`, use a clean worktree and replay only these five commits, excluding the duplicated dependency commits even if the earlier PRs were squash-merged:
+
+```sh
+git fetch origin
+git switch pr/ios-offline-foundation
+git branch work/ios-before-stack-integration
+git rebase --onto origin/main 5ab8830
+git diff --stat origin/main...HEAD
+```
+
+Inspect conflicts against the actual merged parent, then rerun affected checks. After rebasing, update the published iOS branch with `git push --force-with-lease origin pr/ios-offline-foundation` and retarget its PR to `main`. Keep it in draft while required verification is pending. Until that integration is complete, inspect the iOS scope with `git diff pr/consolidate-platform-foundation...pr/ios-offline-foundation`; comparing against today's `main` includes the pending desktop/release stack.

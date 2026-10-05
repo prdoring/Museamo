@@ -6,7 +6,7 @@ import type { Entry } from "./data";
 import App from "./App";
 
 const fake = vi.hoisted(() => ({ queries: [] as { starred: boolean; resolve: (page: unknown) => void; reject: (error: Error) => void }[], changed: () => {} }));
-vi.mock("./platform", async importOriginal => ({ ...(await importOriginal<typeof import("./platform")>()), platform: "preview", isDesktop: false, isPreview: false, capabilities: { nativeCapture: false } }));
+vi.mock("./platform", async importOriginal => ({ ...(await importOriginal<typeof import("./platform")>()), platform: "preview", isDesktop: false, isPreview: false, capabilities: (await importOriginal<typeof import("./platform")>()).platformCapabilities("preview") }));
 vi.mock("./components/LocationMap", () => ({ LocationMap: () => null }));
 vi.mock("./data", async importOriginal => ({ ...(await importOriginal<typeof import("./data")>()), isNative: false,
   bridge: {

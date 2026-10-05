@@ -1,6 +1,6 @@
 # Development
 
-Start with the [README](../README.md) for the app's behavior. The browser preview is temporary and resets on refresh; it never opens an Android or Windows library.
+Start with the [README](../README.md) for the app's behavior. The browser preview is temporary and resets on refresh; it never opens a native library.
 
 ## Browser preview
 
@@ -48,6 +48,23 @@ With a disposable emulator/device attached:
 ```
 
 Instrumented tests can replace or clear test data. Use test installations and preserve backups. See the [device checklist](device-checklist.md) for launcher and lifecycle checks, and [paper verification](paper-verification.md) for the isolated visual-test package.
+
+## iOS
+
+Build iOS on macOS with Xcode 26 or newer, which Capacitor 8 requires, and Node 22. Dependencies come through Swift Package Manager; CocoaPods is unnecessary. Install an iOS simulator runtime, 16.4 or newer, in Xcode Settings > Components.
+
+```sh
+npm run ios:build
+npm run ios:launch
+```
+
+`ios:build` builds the web app, syncs it into `ios/App`, and makes an unsigned Debug simulator build at `ios/DerivedData/Build/Products/Debug-iphonesimulator/App.app`. `ios:launch` boots an iPhone simulator when none is running, then installs and opens that build; reinstalling preserves app data. `npm run ios:run` does both. Set `IOS_DEVICE_ID` to a UDID from `xcrun simctl list devices available` to choose a simulator. Use `npm run ios:open` to run from Xcode with a debugger instead.
+
+The iOS host uses the Swift SQLite repository and registered Capacitor bridge for offline text capture, durable drafts, search, Gems, tags/checklists, and local Recovery. Media, location, backups, linked devices, shared hashtags, and widgets remain unavailable on iOS.
+
+Run the Swift package tests with `npm run test:ios`. Local persistence UI tests use the committed `AppUITests` target: run `npm run ios:sync` (or `ios:build`) before `npm run test:ios:ui` to refresh the web bundle. Set `IOS_TEST_DEVICE_ID` to choose an available iPhone simulator. CI is configured for Swift tests and an unsigned simulator build; the hosted job is not yet verified and does not run UI tests.
+
+Follow [iOS development](ios-development.md) for the native boundaries and [the iPhone device checklist](ios-device-checklist.md) for local signing, installation, and manual hardware checks. Signed physical-device installation remains to be verified.
 
 ## Windows
 
@@ -97,6 +114,7 @@ On Android build hosts, run `./gradlew :app:testDebugUnitTest` from `android/`. 
 | --- | --- |
 | `src/` | React interface, bridge contracts, browser preview, frontend tests |
 | `android/app/src/main/` | Kotlin bridge, Room storage, capture, widgets, lifecycle |
+| `ios/App/`, `native/ios/MuseamoNative/` | Capacitor iPhone host, Swift bridge, SQLite text storage |
 | `desktop/src/` | Tauri commands, SQLite, backups, tray, desktop sync |
 | `crates/sync-core/` | Shared protocol, identity, pairing, discovery, replication |
 | `scripts/` | Platform builders and local release tooling |
@@ -106,4 +124,4 @@ Persistence errors must remain visible; real apps must never fall back to previe
 
 ## CI and releases
 
-GitHub Actions defines frontend, Rust, Android unit/lint, emulator, and Windows/macOS/Linux desktop checks. Desktop validation bundles are retained as short-lived workflow artifacts, not published releases. Downloadable releases are assembled and published explicitly from local builds; see [the release guide](releases.md).
+GitHub Actions defines frontend, Rust, Android unit/lint, emulator, iOS Swift/simulator build, and Windows/macOS/Linux desktop checks. The new iOS job is configured but its hosted result remains unverified. Desktop validation bundles are retained as short-lived workflow artifacts, not published releases. Downloadable releases are assembled and published explicitly from local builds; see [the release guide](releases.md).

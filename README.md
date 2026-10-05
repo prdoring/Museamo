@@ -129,7 +129,7 @@ Some optional features use the internet: linked media contacts its host, address
 
 ## Development
 
-The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. Desktop uses Tauri with Rust/SQLite storage. Both share a Rust core for local-network sync. Local desktop builds target Windows x64, Apple Silicon macOS, and Linux x64; see [desktop build prerequisites and packaging](docs/desktop-packaging.md).
+The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. Desktop uses Tauri with Rust/SQLite storage. Android and desktop share a Rust core for local-network sync. An initial iPhone development app uses Capacitor with a Swift/SQLite bridge for offline text capture, durable drafts, search, Gems, tags/checklists, and local Recovery; media, locations, backups, and sync are future iOS work. See [iOS development](docs/ios-development.md) and the [iPhone hardware checklist](docs/ios-device-checklist.md). Local desktop builds target Windows x64, Apple Silicon macOS, and Linux x64; see [desktop build prerequisites and packaging](docs/desktop-packaging.md).
 
 For a temporary browser preview, install Node.js 22 or newer, then run:
 

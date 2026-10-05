@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { bridge } from "../data";
 import { formatBytes, type SyncDevice, type SyncState } from "../sync";
+import { capabilities } from "../platform";
 
 export function Devices() {
+  return capabilities.sync ? <AvailableDevices /> : null;
+}
+function AvailableDevices() {
   const [state, setState] = useState<SyncState>();
   const [address, setAddress] = useState("");
   const [error, setError] = useState("");

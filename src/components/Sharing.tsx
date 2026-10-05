@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ListChecks, Users, QrCode, ScanLine } from "lucide-react";
 import { bridge, type Tag } from "../data";
-import { platform } from "../platform";
+import { platform, capabilities } from "../platform";
 import type { TagInvitation, TagShareState } from "../sharing";
 import { Sheet } from "./Thoughts";
 
@@ -10,7 +10,11 @@ export function ChecklistMark() { return <span className="shared-mark"><ListChec
 export function SharedMark({ className = "" }: { className?: string }) {
   return <span className={`shared-mark ${className}`} title="Shared hashtag"><Users size={15} aria-hidden="true" /><span className="sr-only">Shared</span></span>;
 }
-export function TagSharingSettings({ tag, changed, close, stateChanged, disabled = false }: { tag: Tag; changed: () => Promise<void>; close: () => void; stateChanged?: (state: TagShareState) => void; disabled?: boolean }) {
+type TagSharingSettingsProps = { tag: Tag; changed: () => Promise<void>; close: () => void; stateChanged?: (state: TagShareState) => void; disabled?: boolean };
+export function TagSharingSettings(props: TagSharingSettingsProps) {
+  return capabilities.sharing ? <AvailableTagSharingSettings {...props} /> : null;
+}
+function AvailableTagSharingSettings({ tag, changed, close, stateChanged, disabled = false }: TagSharingSettingsProps) {
   const [state, setState] = useState<TagShareState>(tag.sharing ?? { collectionId: null });
   const [invite, setInvite] = useState<TagInvitation>();
   const [confirm, setConfirm] = useState<"start" | "stop" | "leave" | string>();
@@ -80,7 +84,7 @@ export function JoinSharedTag({ joined }: { joined: () => Promise<void> }) {
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); pending.current = false; }
   }
-  if (platform === "desktop") return null;
+  if (!capabilities.sharing || platform === "desktop") return null;
   return <><button className="menu-row" disabled={busy} onClick={() => void scan()}><ScanLine size={20} aria-hidden="true" />Join shared hashtag</button>{open && <Sheet title="Join shared hashtag" close={() => { if (!busy) { setOpen(false); setPreview(undefined); } }}>
     {preview && <><h3>#{preview.name}</h3><p>{preview.count} existing item(s){preview.type === "checklist" ? " · Checklist" : ""}</p><p>You and everyone who joins can add, edit, delete, and check off items. Text, attachments, and saved locations are shared. Your other tags and Gems stay private.</p><p className="muted">This list will also appear on your linked devices. Both phones must be reachable on the same local network to join.</p><button className="primary" disabled={busy} onClick={() => void join()}>{busy ? "Joining…" : "Join shared hashtag"}</button></>}
     {error && <p className="error" role="alert">{error}</p>}

@@ -368,6 +368,7 @@ export function Editor({
   const locationEdited = useRef(false);
   function changeLocation(next: PostLocation | null) { ++locationRequest.current; setLocating(false); locationEdited.current = true; setLocationMessage(""); setLocation(next); change?.(text, selected, attachments, next); }
   async function requestLocation() {
+    if (!capabilities.location) return;
     const request = ++locationRequest.current; setLocating(true); setLocationMessage("");
     try {
       const result = await bridge.currentLocation();
@@ -382,7 +383,7 @@ export function Editor({
   const [mediaToolbar, setMediaToolbar] = useState<HTMLSpanElement | null>(null);
   // Pins belong to the entire edit session, including the discard-confirmation screen.
   const stagedMedia = useRef<string[]>([]);
-  useEffect(() => () => { void bridge.releaseMedia({ ids: stagedMedia.current }); }, []);
+  useEffect(() => () => { if (capabilities.media && stagedMedia.current.length) void bridge.releaseMedia({ ids: stagedMedia.current }).catch(() => {}); }, []);
   const pending = useRef(false);
   const editor = useEditor({
     extensions: [StarterKit.configure({ link: { openOnClick: false, protocols: ["http", "https"] } }), Markdown],
@@ -517,12 +518,12 @@ export function Editor({
         <>
           <EditorContent editor={editor} />
           {(location || locating || locationMessage) && <p className="composer-location-status" role="status">{locating ? "Finding location…" : locationMessage || (location ? locationLabel(location) : "")}</p>}
-          <Presence>{showLocation && location && <Disclosure><div className="location-editor">
+          <Presence>{capabilities.location && showLocation && location && <Disclosure><div className="location-editor">
             <label>Place name <input maxLength={500} disabled={busy} value={location.userLabel || ""} placeholder="Optional place name" onChange={e => changeLocation({ ...location, userLabel: e.target.value })} /></label>
             <button disabled={busy || locating} onClick={() => void requestLocation()}>Refresh location</button>
             <button disabled={busy} onClick={() => { changeLocation(null); setShowLocation(false); }}>Remove location</button>
           </div></Disclosure>}</Presence>
-          <AttachmentEditor toolbar={mediaToolbar} attachments={attachments} disabled={busy || importing} report={setError} importing={setImporting} retain={ids => stagedMedia.current.push(...ids)} change={items => { setAttachments(items); change?.(text, selected, items); }} />
+          {capabilities.media && <AttachmentEditor toolbar={mediaToolbar} attachments={attachments} disabled={busy || importing} report={setError} importing={setImporting} retain={ids => stagedMedia.current.push(...ids)} change={items => { setAttachments(items); change?.(text, selected, items); }} />}
           {importing && <p role="status">Importing media… Keep this screen open.</p>}
           <Presence>{showFormatting && (
             <Disclosure>
@@ -684,10 +685,10 @@ export function Editor({
             </div>
           )}
           <div className="composer-bar">
-            <span className="composer-media-action" ref={setMediaToolbar} />
+            {capabilities.media && <span className="composer-media-action" ref={setMediaToolbar} />}
             <button className="composer-icon" type="button" aria-label="Text formatting" aria-expanded={showFormatting} disabled={busy || importing} onMouseDown={e => e.preventDefault()} onClick={() => { setShowFormatting(!showFormatting); setShowTags(false); setShowLocation(false); }}>Aa</button>
             <button className="composer-icon" type="button" aria-label="Add tag" aria-expanded={showTags} disabled={busy || importing} onClick={() => { setShowTags(!showTags); setShowFormatting(false); setShowLocation(false); }}><Hash size={22} /></button>
-            {(capabilities.automaticLocation || location) && <button className={"composer-icon location-toggle" + (location ? " has-location" : "")} type="button" aria-label={locating ? "Finding location" : "Post location"} aria-expanded={showLocation} disabled={busy || importing || locating} onClick={() => {
+            {capabilities.location && (capabilities.automaticLocation || location) && <button className={"composer-icon location-toggle" + (location ? " has-location" : "")} type="button" aria-label={locating ? "Finding location" : "Post location"} aria-expanded={showLocation} disabled={busy || importing || locating} onClick={() => {
               setShowFormatting(false); setShowTags(false);
               if (location) setShowLocation(!showLocation); else void requestLocation();
             }}>{locating ? <LoaderCircle className="location-spinner" size={22} /> : <MapPin size={22} />}</button>}

@@ -1,0 +1,18 @@
+[
+  {
+    "text": "#words #WORDS #café #shower-thoughts https://example.com/#fragment email#part",
+    "names": ["words", "café", "shower-thoughts"]
+  },
+  {
+    "text": "A word #\"Cool words\" and #fresh",
+    "names": ["Cool words", "fresh"]
+  },
+  { "text": "#\"Cool words\" #\"cool words\"", "names": ["Cool words"] },
+  { "text": "#\"unfinished tag", "names": [] },
+  { "text": "#你好 #42 #a_b", "names": ["你好", "42", "a_b"] },
+  { "text": "#\"  \" #", "names": [] },
+  {
+    "text": "**#words** and **#\"Cool words\"** _#words_ _#\"Cool words\"_",
+    "names": ["words", "Cool words"]
+  }
+]

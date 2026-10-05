@@ -12,7 +12,7 @@ const fake = vi.hoisted(() => ({
   desktopInfo: vi.fn(), startup: vi.fn(), setStartup: vi.fn(), close: vi.fn(),
   currentWindow: vi.fn(),
 }));
-vi.mock("./platform", async importOriginal => ({ ...(await importOriginal<typeof import("./platform")>()), platform: "desktop", isDesktop: true, isPreview: false, capabilities: { nativeCapture: false, widgets: false, automaticLocation: false } }));
+vi.mock("./platform", async importOriginal => ({ ...(await importOriginal<typeof import("./platform")>()), platform: "desktop", isDesktop: true, isPreview: false, capabilities: (await importOriginal<typeof import("./platform")>()).platformCapabilities("desktop") }));
 vi.mock("./data", async importOriginal => ({ ...(await importOriginal<typeof import("./data")>()), isNative: true,
   bridge: {
     getDesktopInfo: fake.desktopInfo,
