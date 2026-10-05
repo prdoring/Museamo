@@ -25,6 +25,7 @@
     "android:sync-core": "node scripts/build-sync-android.mjs",
     "test:sync": "cargo test -p museamo-sync-core",
     "test:ios": "swift test --package-path native/ios/MuseamoNative",
+    "test:ios:ui": "node scripts/test-ios-ui.mjs",
     "release": "node scripts/release.mjs check",
     "release:build": "node scripts/release.mjs build",
     "release:assemble": "node scripts/release.mjs assemble",
