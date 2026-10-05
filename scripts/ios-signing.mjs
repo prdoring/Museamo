@@ -89,14 +89,10 @@ export function packageCertificate({ openssl, destination, certificatePath, pass
   if (!(Date.parse(certificate.validTo) > Date.now())) throw new Error('This distribution certificate has expired.');
   const key = createPrivateKey({ key: readFileSync(keyPath), passphrase });
   if (!certificate.checkPrivateKey(key)) throw new Error('This certificate belongs to a different private key. Download the certificate issued for this signing request.');
-  const pem = path.join(destination, 'distribution.certificate.pem');
-  writeFileSync(pem, certificate.toString(), { mode: 0o600 });
-  try {
-    // Node decrypts the persistent key; OpenSSL receives the key only through a
-    // private input pipe. Never write an unencrypted signing key to disk.
-    // Explicit algorithms remain compatible with Apple's security import tool.
-    run(openssl, ['pkcs12', '-passout', 'env:MUSEAMO_IOS_P12_PASSWORD', '-export', '-inkey', '-', '-in', pem, '-out', p12, '-name', 'Museamo Apple Distribution', '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES', '-macalg', 'sha1'], { input: key.export({ type: 'pkcs8', format: 'pem' }), env: { ...process.env, MUSEAMO_IOS_P12_PASSWORD: passphrase } });
-  } finally { rmSync(pem, { force: true }); }
+  // With no -in/-inkey, pkcs12 reads the certificate and key together from its
+  // default standard input. No unencrypted private key is written to disk.
+  // Explicit algorithms remain compatible with Apple's security import tool.
+  run(openssl, ['pkcs12', '-passout', 'env:MUSEAMO_IOS_P12_PASSWORD', '-export', '-out', p12, '-name', 'Museamo Apple Distribution', '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES', '-macalg', 'sha1'], { input: key.export({ type: 'pkcs8', format: 'pem' }) + certificate.toString(), env: { ...process.env, MUSEAMO_IOS_P12_PASSWORD: passphrase } });
   return p12;
 }
 
