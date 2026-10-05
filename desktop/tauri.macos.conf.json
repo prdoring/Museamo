@@ -1,18 +1,14 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "Museamo",
-        "width": 1100,
-        "height": 800,
-        "minWidth": 640,
-        "minHeight": 500,
-        "decorations": true,
-        "shadow": true,
-        "resizable": true
-      }
-    ]
+    "windows": [{ "label": "main", "title": "Museamo", "width": 1100, "height": 800, "minWidth": 640, "minHeight": 500, "decorations": true, "shadow": true, "resizable": true }]
+  },
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "infoPlist": "Info.plist"
+    }
   }
 }

@@ -62,6 +62,33 @@ The default build produces `target/release/museamo-desktop.exe` and an NSIS inst
 
 Closing the real Windows app keeps its tray process running. Quit it from the tray before replacing its executable. Libraries are stored in the Windows profile, separately from the executable.
 
+## macOS and Linux desktop
+
+See [desktop packaging](desktop-packaging.md) for the complete prerequisites, browser baseline, commands, and output paths. Desktop builds do not require Java or the Android SDK. Use the committed Rust toolchain and npm lockfile.
+
+```sh
+npm ci
+npm run desktop:doctor
+npm run desktop:dev
+```
+
+Build on the target OS. Initial distributable targets are Apple Silicon macOS 14 and Ubuntu 22.04 x64 with security updates. macOS uses native window controls, Command shortcuts, and Keychain for private device identity. Closing hides the window; reopen through the Dock or menu-bar icon, or quit through the application menu. Linux uses an unlocked Secret Service provider for private identity. Closing quits the Linux app, so it remains usable on desktops without tray support. Startup on Linux opens the window.
+
+Native libraries remain outside the executable, in Tauri's per-user application data directory. Use portable export/import to move data between devices; do not copy a database and expect its OS-protected private identity to unlock on another machine.
+
+## Final test handoff
+
+When working with an agent under this repository's test-execution restriction, run typechecks, lint, and compilation first. The user runs tests last and reports results. Do not invoke release verification from an agent, because it runs tests.
+
+```sh
+npm test
+npm run test:release
+node --test scripts/build-sync-android.test.mjs
+cargo test --workspace --locked -- --test-threads=1
+```
+
+On Android build hosts, run `./gradlew :app:testDebugUnitTest` from `android/`. Use `cargo test -p museamo-sync-core --locked` instead of the workspace command if desktop dependencies are not installed. Run instrumented tests only on a disposable device or emulator. Native smoke checks must use disposable libraries and cover restart persistence, protected identity recovery, backups, links, media, lifecycle, startup, discovery, and sync.
+
 ## Repository map
 
 | Directory | Responsibility |
@@ -77,4 +104,4 @@ Persistence errors must remain visible; real apps must never fall back to previe
 
 ## CI and releases
 
-GitHub Actions runs frontend, Rust, Android unit/lint, emulator, and Windows native checks. Test reports may be attached to workflow runs. Downloadable releases are built and published locally; see [the release guide](releases.md).
+GitHub Actions validates frontend, Rust, Android unit/lint, emulator, and Windows/macOS/Linux desktop checks. Desktop validation bundles are retained as short-lived workflow artifacts. See [the release guide](releases.md) for the current local release workflow.

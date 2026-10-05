@@ -16,6 +16,7 @@
     "android:open": "cap open android",
     "desktop:dev": "node scripts/desktop.mjs dev",
     "desktop:build": "node scripts/desktop.mjs build",
+    "desktop:doctor": "node scripts/desktop-doctor.mjs",
     "android:sync-core": "node scripts/build-sync-android.mjs",
     "test:sync": "cargo test -p museamo-sync-core",
     "release": "node scripts/release.mjs push",
