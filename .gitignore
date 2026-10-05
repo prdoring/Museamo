@@ -27,6 +27,7 @@ android/app/src/main/jniLibs/
 desktop/icons/*
 !desktop/icons/icon.ico
 !desktop/icons/icon.png
+!desktop/icons/icon.icns
 releases/
 output/
 artifacts-*.png

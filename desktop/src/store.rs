@@ -47,6 +47,19 @@ pub struct Store {
 }
 impl Store {
     pub fn open(root: &Path) -> Result<Self> {
+        Self::open_with_loader(root, crate::identity::Identity::load)
+    }
+    #[cfg(test)]
+    pub(crate) fn open_with_identity_loader(
+        root: &Path,
+        load_identity: impl FnOnce(&Self) -> Result<crate::identity::Identity>,
+    ) -> Result<Self> {
+        Self::open_with_loader(root, load_identity)
+    }
+    fn open_with_loader(
+        root: &Path,
+        load_identity: impl FnOnce(&Self) -> Result<crate::identity::Identity>,
+    ) -> Result<Self> {
         std::fs::create_dir_all(root.join("media")).map_err(|e| e.to_string())?;
         std::fs::create_dir_all(root.join("staging")).map_err(|e| e.to_string())?;
         let db = Connection::open(root.join("library.sqlite")).map_err(|e| e.to_string())?;
@@ -69,12 +82,35 @@ impl Store {
           CREATE TABLE IF NOT EXISTS tag_aliases(source_id TEXT PRIMARY KEY,canonical_id TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS sharing_pending(id TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at INTEGER NOT NULL);
           PRAGMA user_version=3; COMMIT;").map_err(|e|e.to_string())?;
-        let device = Self::metadata_on(&db, "device")?.unwrap_or_else(id);
-        db.execute(
-            "INSERT OR IGNORE INTO metadata VALUES ('device',?1)",
-            [&device],
-        )
-        .map_err(|e| e.to_string())?;
+        // Serialize device initialization so concurrent openers use the persisted identifier.
+        db.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+        let device_result = (|| -> Result<String> {
+            match Self::metadata_on(&db, "device")? {
+                Some(device) => Ok(device),
+                None => {
+                    if Self::metadata_on(&db, "identity")?.is_some()
+                        || Self::metadata_on(&db, "signedJournal")?.is_some()
+                    {
+                        return Err("This library's device identifier is missing. Restore a portable backup in a new installation.".into());
+                    }
+                    let device = id();
+                    db.execute("INSERT INTO metadata VALUES ('device',?1)", [&device])
+                        .map_err(|e| e.to_string())?;
+                    Ok(device)
+                }
+            }
+        })();
+        let device = match device_result {
+            Ok(device) => device,
+            Err(error) => {
+                let _ = db.execute_batch("ROLLBACK");
+                return Err(error);
+            }
+        };
+        if let Err(error) = db.execute_batch("COMMIT") {
+            let _ = db.execute_batch("ROLLBACK");
+            return Err(error.to_string());
+        }
         let mut store = Self {
             db,
             root: root.to_owned(),
@@ -82,9 +118,7 @@ impl Store {
             identity: None,
             shared_projection: false,
         };
-        store.identity = Some(std::sync::Arc::new(crate::identity::Identity::load(
-            &store,
-        )?));
+        store.identity = Some(std::sync::Arc::new(load_identity(&store)?));
         // Scaffolding databases predate the signed journal. Preserve their current saved library.
         if store.metadata("signedJournal")?.is_none() {
             store
@@ -92,6 +126,10 @@ impl Store {
                 .execute_batch("BEGIN IMMEDIATE")
                 .map_err(|e| e.to_string())?;
             let result = (|| {
+                // Another opener may have completed migration while this one waited for the lock.
+                if store.metadata("signedJournal")?.is_some() {
+                    return Ok(());
+                }
                 let legacy_recovery = store.command("listRecovery", &json!({}))?["items"]
                     .as_array()
                     .ok_or("Invalid legacy Recovery")?

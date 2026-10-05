@@ -3,7 +3,8 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MotionList, Presence, Disclosure, PageMotion, animateElement, type MotionItem } from "./components/Motion";
-import { DesktopLayout, WindowControls } from "./components/Desktop";
+import { DesktopLayout, DesktopRuntime, WindowControls } from "./components/Desktop";
+import { previewDesktopInfo } from "./platform";
 import { ActionMenu } from "./components/ActionMenu";
 import { PhotoViewer } from "./components/PhotoViewer";
 import { captureReadingAnchor, restoreReadingAnchor } from "./feedMotion";
@@ -114,7 +115,7 @@ describe("surfaces and reading position", () => {
     restoreReadingAnchor(anchor); expect(scroll).toHaveBeenCalledWith(0, anchor.scroll);
   });
   it("keeps custom window controls outside the inert app region", () => {
-    act(() => root.render(<DesktopLayout.Provider value><WindowControls report={() => {}} /><div className="app-shell" inert><button>Background</button></div></DesktopLayout.Provider>));
+    act(() => root.render(<DesktopLayout.Provider value><DesktopRuntime.Provider value={{ status: "ready", info: previewDesktopInfo }}><WindowControls report={() => {}} /><div className="app-shell" inert><button>Background</button></div></DesktopRuntime.Provider></DesktopLayout.Provider>));
     expect(host.querySelector('[aria-label="Close window"]')?.closest("[inert]")).toBeNull();
   });
   it("supports anchored menu arrows, Escape and return focus", () => {

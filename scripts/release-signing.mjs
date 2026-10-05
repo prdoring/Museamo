@@ -40,8 +40,9 @@ export function signingCommand(action, env = process.env) {
   }
 }
 
-export async function configureSigning(env = process.env, load = () => signingCommand("load", env)) {
+export async function configureSigning(env = process.env, load = () => signingCommand("load", env), platform = process.platform) {
   if (signingSource(env) === "saved") {
+    if (platform !== "win32") throw new Error("Unix Android release builds require all four MUSEAMO signing variables for the existing release key. Saved DPAPI signing configuration is Windows-only.");
     const saved = await load();
     if (saved?.schema !== 1 || signingVariables.some(name => typeof saved[name] !== "string" || !saved[name])) {
       throw new Error("Invalid saved signing configuration. Run npm run release:signing to check it.");
