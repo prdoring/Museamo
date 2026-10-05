@@ -11,12 +11,15 @@ const directory = path.join(root, '.tools', 'ios-signing');
 const repository = 'prdoring/Museamo';
 
 export function findOpenSSL(env = process.env) {
-  const candidates = [env.MUSEAMO_OPENSSL, ...(process.platform === 'win32' ? [path.join(env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'usr', 'bin', 'openssl.exe')] : []), 'openssl'].filter(Boolean);
+  const candidates = [env.MUSEAMO_OPENSSL,
+    ...(process.platform === 'win32' ? [path.join(env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'usr', 'bin', 'openssl.exe')] : []),
+    ...(process.platform === 'darwin' ? ['/opt/homebrew/opt/openssl@3/bin/openssl', '/usr/local/opt/openssl@3/bin/openssl'] : []),
+    'openssl'].filter(Boolean);
   for (const candidate of candidates) {
     const result = spawnSync(candidate, ['version'], { encoding: 'utf8', windowsHide: true });
-    if (!result.error && result.status === 0) return candidate;
+    if (!result.error && result.status === 0 && /^OpenSSL\s/.test(result.stdout)) return candidate;
   }
-  throw new Error('OpenSSL was not found. On Windows, install Git for Windows, or set MUSEAMO_OPENSSL to your OpenSSL executable.');
+  throw new Error('OpenSSL was not found. On Windows, install Git for Windows; on macOS, use Homebrew OpenSSL. You can also set MUSEAMO_OPENSSL to your OpenSSL executable. Apple’s LibreSSL is not supported by this helper.');
 }
 
 function run(command, args, { input, env = process.env } = {}) {

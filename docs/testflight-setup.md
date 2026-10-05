@@ -39,7 +39,7 @@ Creating the record does not publish the app. [Apple's app-record instructions](
 
 ## 3. Create the signing certificate from Windows
 
-Open a terminal in this Museamo folder. The helper requires Node 22+ and OpenSSL; it automatically finds the OpenSSL bundled with Git for Windows. Set `MUSEAMO_OPENSSL` to an executable path if using a different installation.
+Open a terminal in this Museamo folder. The helper requires Node 22+ and OpenSSL; it automatically finds the OpenSSL bundled with Git for Windows. Set `MUSEAMO_OPENSSL` to an executable path if using a different installation. If using the helper on macOS, it selects Homebrew OpenSSL instead of Apple's older LibreSSL.
 
 Run:
 
