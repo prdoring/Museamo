@@ -3,6 +3,23 @@ on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
+  ios:
+    runs-on: macos-15
+    env:
+      # Capacitor 8 requires Xcode 26; avoid the runner's older default Xcode.
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: xcodebuild -version
+      - run: npm ci
+      - name: Test native iOS persistence and platform contracts
+        run: npm run test:ios
+      - name: Build the iOS simulator app
+        run: npm run ios:build
   build:
     runs-on: ubuntu-latest
     steps:
