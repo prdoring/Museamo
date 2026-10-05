@@ -93,7 +93,7 @@ export function packageCertificate({ openssl, destination, certificatePath, pass
   writeFileSync(pem, certificate.toString(), { mode: 0o600 });
   try {
     // Explicit algorithms remain compatible with Apple's security import tool.
-    run(openssl, ['pkcs12', '-export', '-inkey', keyPath, '-in', pem, '-out', p12, '-name', 'Museamo Apple Distribution', '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES', '-macalg', 'sha1', '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-passout', 'env:MUSEAMO_IOS_KEY_PASSWORD'], { env: { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase } });
+    run(openssl, ['pkcs12', '-passin', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-passout', 'env:MUSEAMO_IOS_KEY_PASSWORD', '-export', '-inkey', keyPath, '-in', pem, '-out', p12, '-name', 'Museamo Apple Distribution', '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES', '-macalg', 'sha1'], { env: { ...process.env, MUSEAMO_IOS_KEY_PASSWORD: passphrase } });
   } finally { rmSync(pem, { force: true }); }
   return p12;
 }
