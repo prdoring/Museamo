@@ -2,10 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Bundled Rust uses Noise, X25519, ChaChaPoly and SHA-256. Export compliance
-       must be reviewed in App Store Connect; do not claim OS-only encryption. -->
+  <!-- Bundled Rust uses standard cryptography. The owner's Apple questionnaire
+       returned no documentation required for distribution excluding France.
+       This declares documentation exemption, not absence of encryption. -->
   <key>ITSAppUsesNonExemptEncryption</key>
-  <true/>
+  <false/>
   <key>NSCameraUsageDescription</key>
   <string>Scan a hashtag invitation when you choose to join a shared hashtag.</string>
   <key>NSLocationWhenInUseUsageDescription</key>
