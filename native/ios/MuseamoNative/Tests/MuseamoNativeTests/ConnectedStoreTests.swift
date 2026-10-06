@@ -131,7 +131,8 @@ final class ConnectedStoreTests: XCTestCase {
         let ready = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0), done = expectation(description: "old callback rejected")
         DispatchQueue.global().async {
             ready.signal(); _ = resume.wait(timeout: .now() + 2)
-            XCTAssertThrowsError(try fence.check(previous))
+            do { try fence.check(previous); XCTFail("A suspended runtime callback reached the replacement generation") }
+            catch { XCTAssertTrue(error is LibraryError) }
             done.fulfill()
         }
         XCTAssertEqual(ready.wait(timeout: .now() + 2), .success)

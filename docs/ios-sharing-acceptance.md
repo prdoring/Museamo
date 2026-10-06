@@ -5,7 +5,7 @@ Status: implementation candidate, October 6, 2026. Hardware acceptance has **not
 ## Candidate identity
 
 - Pull request: [iPhone sharing #13](https://github.com/prdoring/Museamo/pull/13).
-- Implementation commit: `968dc2a11186b255eee50a3475d1d1710ae08c90`; required results are in [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
+- Implementation commit: `a650c9021c444a86c82d103c7a51381dfbcde184`; required results are in [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
 - Automated Mac baseline: `cec154ff1e45f2bc5923d60cfd1d4b9483541d16`, [20 Swift tests, simulator build and unsigned iPhone archive passed](https://github.com/prdoring/Museamo/actions/runs/37532863342/job/112506714451), October 6, 2026.
 - Physical tested commit: pending signed candidate and owner record.
 - TestFlight version/build: pending signed candidate.

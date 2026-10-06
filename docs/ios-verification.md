@@ -2,7 +2,7 @@
 
 ## Connected iPhone candidate — October 6, 2026
 
-Implementation is in [draft PR #13](https://github.com/prdoring/Museamo/pull/13), with source commit `968dc2a11186b255eee50a3475d1d1710ae08c90`. Final required results are attached to the [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
+Implementation is in [draft PR #13](https://github.com/prdoring/Museamo/pull/13), with source commit `a650c9021c444a86c82d103c7a51381dfbcde184`. Final required results are attached to the [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
 
 Local checks passed: **151 frontend tests**, **51 Rust tests**, TypeScript, the production web build, 40 Apple framework-builder/change-classification tests, and 11 signing/distribution tests. Desktop passed 39 tests in the sandbox; the remaining DPAPI test passed under the normal Windows account. Existing Vite artwork/chunk warnings remain.
 
