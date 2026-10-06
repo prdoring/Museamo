@@ -143,6 +143,18 @@ test('candidate signing requires iPhone and aggregate checks to actually run suc
   }
 });
 
+test('mainline caller grants the read permissions required by the reusable iPhone workflow', () => {
+  const caller = readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
+  const callee = readFileSync(new URL('../.github/workflows/testflight.yml', import.meta.url), 'utf8');
+  const callerPermissions = caller.match(/  testflight:\r?\n[\s\S]*?    permissions:\r?\n([\s\S]*?)    uses:/)[1];
+  const calleePermissions = callee.match(/^permissions:\r?\n([\s\S]*?)\r?\nconcurrency:/m)[1];
+  const levels = { none: 0, read: 1, write: 2 };
+  for (const [, permission, level] of calleePermissions.matchAll(/^  (\w+): (read|write)\s*$/gm)) {
+    const inherited = callerPermissions.match(new RegExp(`^      ${permission}: (none|read|write)\\s*$`, 'm'))?.[1] ?? 'none';
+    assert.ok(levels[inherited] >= levels[level], `Mainline TestFlight must grant ${permission}: ${level} to its reusable workflow.`);
+  }
+});
+
 test('iPhone identity uses the checked-out release commit rather than workflow_run default SHA', () => {
   const commit = 'a'.repeat(40);
   const env = { MUSEAMO_RELEASE_VERSION: '0.4.1', MUSEAMO_RELEASE_COMMIT: commit, GITHUB_SHA: 'b'.repeat(40) };

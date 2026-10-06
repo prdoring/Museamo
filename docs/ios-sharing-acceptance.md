@@ -1,12 +1,12 @@
 # iPhone sharing acceptance record
 
-Status: implementation candidate, October 6, 2026. Hardware acceptance has **not** passed. Keep the PR as a draft while its automated checks are pending; mark the feature complete only after the device scenarios below pass. Portable backups remain deferred.
+Status: merged implementation candidate, October 6, 2026. All PR automated checks passed and the sole tester approved the mainline TestFlight release. Hardware acceptance has **not** passed; mark the feature complete only after the device scenarios below pass. Portable backups remain deferred.
 
 ## Candidate identity
 
 - Pull request: [iPhone sharing #13](https://github.com/prdoring/Museamo/pull/13).
-- Tested implementation commit: `a62a102688b1045f09307c16f444ee170a579abb`; [all automated platform checks passed](https://github.com/prdoring/Museamo/actions/runs/37534986721). Required PR-head results are in [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
-- Automated iPhone results: [21 Swift tests, simulator build, unsigned iPhone archive and native capture/relaunch UI test passed](https://github.com/prdoring/Museamo/actions/runs/37534986721/job/112513908047), October 6, 2026. UI device: iPhone 16 Pro / iOS 18.5 simulator. The run's `ios-persistence-ui-results` artifact contains the result bundle and screenshots, retained for seven days.
+- Tested implementation commit: `7362a1b455862fb7f0780088856b7667c51b8a12`; [all automated platform checks passed](https://github.com/prdoring/Museamo/actions/runs/37538150162). Merged as `d5f8bf7e27d3b653098aa54ca27a82e6b0f2aef3`.
+- Automated iPhone results: [21 Swift tests, simulator build, unsigned iPhone archive and native capture/relaunch UI test passed](https://github.com/prdoring/Museamo/actions/runs/37538150162/job/112524883437), October 6, 2026. UI device: iPhone 16 Pro / iOS 18.5 simulator. The run's `ios-persistence-ui-results` artifact contains the result bundle and screenshots, retained for seven days.
 - Physical tested commit: pending signed candidate and owner record.
 - TestFlight version/build: pending signed candidate.
 - iPhone model/iOS: pending owner record.

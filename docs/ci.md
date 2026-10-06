@@ -11,13 +11,14 @@
 | Swift package tests | Linux tests and Swift tests on macOS; no simulator/archive packaging | No |
 | Android unit/instrumented tests | Linux tests, Android build/unit/lint, and emulator tests | No |
 | Desktop Rust tests or fixtures | Linux tests and Rust tests on Windows, macOS, and Linux; no distributable bundles | No |
-| Shared Rust core tests | Android and desktop checks, plus Linux tests; no desktop packages | No |
+| Shared Rust core tests | Android, iPhone and desktop checks, plus Linux tests; no application packages | No |
 | iPhone UI tests | Linux and iPhone tests/build validation | No |
 | iPhone implementation or generated iPhone assets | Linux and iPhone checks/builds | Yes |
 | Android implementation or native Android build script | Linux and Android checks/builds | Yes |
 | Desktop implementation or desktop packaging | Linux and all three desktop checks/builds | Yes |
 | macOS/Windows/Linux-specific Tauri configuration, or a platform-specific icon/Info.plist | Linux tests and that desktop platform's checks/build | Yes |
-| Shared Rust code/toolchain/dependencies | Linux, Android, and desktop checks/builds | Yes |
+| Shared Rust code/toolchain/dependencies | Linux, Android, iPhone and desktop checks/builds | Yes |
+| Apple Rust framework builder or C interface | Linux and iPhone checks/builds; interface changes also check Android/desktop | Yes |
 | Shared interface, npm dependencies, bundled assets, or an unfamiliar path | Full validation | Yes |
 | Workflow configuration or the change classifier itself | Full validation | No, unless mixed with app/bundle changes |
 | Manual `Checks` dispatch | Full validation | No |
@@ -41,6 +42,8 @@ Successful mainline `Checks` uploads a small `ci-change-scope` artifact, retaine
 A documentation-, tooling-, or test-only merge finishes this inexpensive release eligibility job and skips reservation, Windows/Android release builds, GitHub publication, and TestFlight. Missing, expired, malformed, or mismatched records refuse a release. PR and manually dispatched checks never authorize automatic publication.
 
 App changes retain the existing delivery model: Windows and Android publish together, and TestFlight uploads independently, even when validation only needed one platform. This keeps the version/download set consistent. Platform-specific publication would require a separate release-policy change.
+
+An explicit manual TestFlight candidate is separate from automatic publication: an own-repository `codex/` branch can sign only the iPhone app after successful Checks for the exact dispatched commit, with frontend, iPhone and aggregate jobs all passing. Upload defaults off. This does not authorize a merge or Windows/Android publication; see [candidate instructions](testflight-setup.md#6-build-then-upload).
 
 For configuration and recovery, see [releases](releases.md) and [TestFlight setup](testflight-setup.md).
 
