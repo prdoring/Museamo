@@ -18,8 +18,14 @@ extension LibraryStore {
         _ = try SyncCore.evaluate(["action":"validateMedia","payload":value])
         let id = try string(value,"id")
         if let current = try record("media",key:"id",id:id) {
-            guard try SyncCore.hash(current) == SyncCore.hash(value) else { throw LibraryError("Attachment identity conflicts with a saved original.") }
-        } else { try db.run("INSERT INTO media VALUES(?,?)",[id,try encode(value)]) }
+            guard try SyncCore.hash(normalizedMedia(current)) == SyncCore.hash(normalizedMedia(value)) else { throw LibraryError("Attachment identity conflicts with a saved original.") }
+        } else { try db.run("INSERT INTO media VALUES(?,?)",[id,try encode(normalizedMedia(value))]) }
+    }
+    private func normalizedMedia(_ value: [String: Any]) -> [String: Any] {
+        var metadata = value
+        // The wire protocol accepts an absent still-image duration and emits null.
+        metadata["duration"] = value["duration"] ?? NSNull()
+        return metadata
     }
     func attachments(_ input: [String:Any],fallback: [[String:Any]] = []) throws -> [[String:Any]] {
         let ids: [String]
@@ -35,7 +41,7 @@ extension LibraryStore {
         guard size > 0, size <= (kind == "image" ? 50:500)*1024*1024 else { throw LibraryError("Choose a photo up to 50 MB or a video up to 500 MB.") }
         let free = (try FileManager.default.attributesOfFileSystem(forPath:directory.path)[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
         guard free > size + 16*1024*1024 else { throw LibraryError("Not enough device storage. Your writing is kept.") }
-        let id = uid(); var value = input
+        let id = uid(); var value = normalizedMedia(input)
         value["id"] = id; value["byteSize"] = size; value["checksum"] = try fileHash(url)
         value["width"] = input["width"] ?? 0; value["height"] = input["height"] ?? 0
         let target = try mediaURL(id)
@@ -56,9 +62,9 @@ extension LibraryStore {
         var references: [String:[String:Any]] = [:]
         func include(_ value: [String:Any]) throws {
             for metadata in value["attachments"] as? [[String:Any]] ?? [] {
-                let id = try string(metadata,"id")
-                if let previous = references[id], try SyncCore.hash(previous) != SyncCore.hash(metadata) { throw LibraryError("Referenced original identities conflict.") }
-                references[id] = metadata
+                let id = try string(metadata,"id"), normalized = normalizedMedia(metadata)
+                if let previous = references[id], try SyncCore.hash(previous) != SyncCore.hash(normalized) { throw LibraryError("Referenced original identities conflict.") }
+                references[id] = normalized
             }
         }
         for table in local ? ["entries","recovery","drafts"]:["entries","recovery"] {

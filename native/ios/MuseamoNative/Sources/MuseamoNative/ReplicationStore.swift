@@ -172,7 +172,7 @@ extension LibraryStore {
                 _ = try SyncCore.evaluate(["action": "validateOperation", "envelope": envelope])
                 if let old = try operation(origin, sequence) {
                     guard try SyncCore.hash(object(old, "header")) == SyncCore.hash(header) else { throw LibraryError("Conflicting signed history; sync must be quarantined.") }
-                    if old["payload"] is NSNull, !(envelope["payload"] is NSNull), try !isPurged(revisionID(envelope)), try !isRetired("thought", entity) {
+                    if old["payload"] is NSNull, !(envelope["payload"] is NSNull), try !isPurged(revisionID(envelope)), try !( ["thought", "archiveThought"].contains(kind) && isRetired("thought", entity)) {
                         try db.run("UPDATE sync_ops SET envelope=? WHERE origin=? AND sequence=?", [try encode(envelope), origin, sequence])
                     }
                     continue

@@ -59,6 +59,9 @@ final class ConnectedStoreTests: XCTestCase {
         let source = try store(), original = directory.appendingPathComponent("photo.jpeg"), bytes = Data(repeating: 9, count: 19000)
         try bytes.write(to: original)
         let media = try source.importMedia(from: original, metadata: ["kind": "image", "mimeType": "image/jpeg", "filename": "photo.jpeg"])
+        XCTAssertTrue(media["duration"] is NSNull)
+        var legacyMetadata = media; legacyMetadata.removeValue(forKey: "duration")
+        try source.registerMedia(legacyMetadata)
         let id = try save(source, "", media: [media]); let mediaID = media["id"] as! String
         try source.releaseMedia([mediaID]); XCTAssertNotNil(try source.originalURL(mediaID))
         let target = try store("target"); try target.registerMedia(media)
@@ -81,6 +84,43 @@ final class ConnectedStoreTests: XCTestCase {
         let shared = try library.sharedPayload(value)
         for field in ["tagIds", "starred", "profileId", "history", "revision"] { XCTAssertNil(shared[field], field) }
         XCTAssertEqual(shared["text"] as? String, "visible")
+    }
+    func testPermanentClearingReplicatesToExistingAndFreshPeersWithoutRetiringSameIDTag() throws {
+        let source = try store("source"), target = try store("target"), fresh = try store("fresh"), id = try identity(source)
+        _ = try identity(target); _ = try identity(fresh)
+        let thought = try save(source, "Before clearing")
+        try source.execute(method: "saveTag", input: ["id": thought, "name": "Surviving tag"])
+        try source.execute(method: "updateEntry", input: ["id": thought, "text": "Edited", "tagIds": [thought]])
+        for peer in [source, target, fresh] { try peer.nativeCall("syncEnroll", ["groupId": "group"]) }
+        _ = try apply(source, to: target, identity: id, group: "group")
+        XCTAssertEqual(try target.entry(thought)?["text"] as? String, "Edited")
+        try source.execute(method: "deleteEntry", input: ["id": thought]); try source.execute(method: "clearAllRecovery")
+        for peer in [target, fresh] {
+            _ = try apply(source, to: peer, identity: id, group: "group")
+            XCTAssertNil(try peer.entry(thought)); XCTAssertTrue(try peer.isRetired("thought", thought))
+            XCTAssertFalse(try peer.isRetired("tag", thought))
+            XCTAssertEqual(try peer.tags().first?["name"] as? String, "Surviving tag")
+            XCTAssertTrue(try peer.db.run("SELECT * FROM recovery WHERE kind='thought'").isEmpty)
+            XCTAssertEqual(try peer.receipts()[id["deviceId"] as! String], try source.receipts()[id["deviceId"] as! String])
+        }
+        try source.execute(method: "saveTag", input: ["id": thought, "name": "Renamed after clearing"])
+        _ = try apply(source, to: target, identity: id, group: "group")
+        XCTAssertEqual(try target.tags().first?["name"] as? String, "Renamed after clearing")
+    }
+    func testReprojectingTagRestoresThoughtAssociationsWithoutCreatingLocalOperations() throws {
+        let library = try store(); _ = try identity(library)
+        let tag = UUID().uuidString.lowercased(); try library.execute(method: "saveTag", input: ["id": tag, "name": "Tasks"])
+        let thought = try save(library, "Tagged", tags: [tag]); try library.nativeCall("syncEnroll", ["groupId": "group"])
+        let count = try library.operations().count
+        try library.db.transaction {
+            try library.db.run("DELETE FROM tags WHERE id=?", [tag])
+            try library.project("thought", thought)
+            XCTAssertEqual(try library.entry(thought)?["tagIds"] as? [String], [])
+            try library.project("tag", tag)
+        }
+        XCTAssertEqual(try library.entry(thought)?["tagIds"] as? [String], [tag])
+        XCTAssertEqual(try library.db.run("SELECT * FROM entry_tags").count, 1)
+        XCTAssertEqual(try library.operations().count, count)
     }
     func testLegacyMigrationSnapshotIncludesWALAndRollbackPreservesAssociations() throws {
         let url = directory.appendingPathComponent("legacy.sqlite"), database = try SQLite(url: url)

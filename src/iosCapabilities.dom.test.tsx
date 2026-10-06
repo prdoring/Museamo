@@ -9,6 +9,7 @@ import { Navigation } from "./components/Navigation";
 import { MediaGallery } from "./components/Media";
 import { TagList } from "./components/LibraryViews";
 import App from "./App";
+import { JoinSharedTag } from "./components/Sharing";
 
 const fake = vi.hoisted(() => ({
   forbidden: Object.fromEntries(["compose", "locationSettings", "currentLocation", "getStartupSettings", "configureWidget", "exportBackup", "importBackup"].map(name => [name, vi.fn()])),
@@ -17,6 +18,9 @@ const fake = vi.hoisted(() => ({
   resolveMedia: vi.fn().mockResolvedValue({ url: "", availability: "pending" }),
   releaseMedia: vi.fn().mockResolvedValue(undefined),
   pickMedia: vi.fn().mockResolvedValue({ attachments: [] }),
+  scanTagInvite: vi.fn().mockResolvedValue({ cancelled: true }),
+  previewTagInvite: vi.fn(),
+  joinTagShare: vi.fn(),
   listRecovery: vi.fn().mockResolvedValue({ items: [] }),
   addListener: vi.fn().mockResolvedValue({ remove: async () => {} }),
   library: vi.fn().mockResolvedValue({ tags: [], profiles: [] }),
@@ -29,6 +33,7 @@ vi.mock("./data", async importOriginal => ({ ...(await importOriginal<typeof imp
 let root: Root, host: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks();
+  fake.scanTagInvite.mockReset().mockResolvedValue({ cancelled: true });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 0; });
@@ -88,4 +93,28 @@ it("opens a persisted native draft through the React composer from the iOS libra
   expect(fake.getDraft).toHaveBeenCalledExactlyOnceWith({ tagId: undefined });
   expect(document.querySelector('[aria-label="Thought text"]')?.textContent).toBe("An unfinished native draft");
   expectNoUnsupportedCalls();
+});
+
+it("requests location only on tap and preserves text when permission is denied", async () => {
+  fake.forbidden.currentLocation.mockResolvedValue({ location: null, status: "permission-denied" });
+  await render(<Editor initial={{ text: "Keep my writing", tagIds: [] }} tags={[]} capture save={async () => {}} refreshTags={async () => {}} close={() => {}} />);
+  expect(fake.forbidden.currentLocation).not.toHaveBeenCalled();
+  await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Post location"]')!.click(); await Promise.resolve(); });
+  expect(fake.forbidden.currentLocation).toHaveBeenCalledOnce();
+  expect(document.body.textContent).toContain("Location permission was not granted.");
+  expect(document.querySelector('[aria-label="Thought text"]')?.textContent).toBe("Keep my writing");
+});
+it("scanner cancellation does not preview or join a collection", async () => {
+  await render(<JoinSharedTag joined={async () => {}} />);
+  await act(async () => { host.querySelector<HTMLButtonElement>("button")!.click(); await Promise.resolve(); });
+  expect(fake.scanTagInvite).toHaveBeenCalledOnce(); expect(fake.previewTagInvite).not.toHaveBeenCalled(); expect(fake.joinTagShare).not.toHaveBeenCalled();
+  expect(host.querySelector('[role="alert"]')).toBeNull();
+});
+it("shows native camera errors and allows another scan", async () => {
+  fake.scanTagInvite.mockRejectedValue(new Error("Camera permission was denied."));
+  await render(<JoinSharedTag joined={async () => {}} />);
+  await act(async () => { host.querySelector<HTMLButtonElement>("button")!.click(); await Promise.resolve(); });
+  expect(document.body.textContent).toContain("Camera permission was denied.");
+  expect(document.body.textContent).toContain("Scan another QR code");
+  expect(fake.joinTagShare).not.toHaveBeenCalled();
 });

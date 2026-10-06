@@ -88,14 +88,7 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
 
     public override func load() {
         activeObserver = NotificationCenter.default.addObserver(forName: UIScene.didActivateNotification, object: nil, queue: .main) { [weak self] _ in
-            guard let self else { return }
-            self.notifyListeners("dataChanged", data: [:])
-            self.runtimeQueue.async {
-                self.foreground = true
-                do {
-                    if try self.repositoryQueue.sync(execute: { try self.store().hasNetworkEnrollment() }) { _ = try self.ensureRuntime() }
-                } catch { self.networkError(error) }
-            }
+            self?.resumeNetwork()
         }
         backgroundObserver = NotificationCenter.default.addObserver(forName: UIScene.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
@@ -106,6 +99,20 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
                 self.runtime?.stop(); self.runtime = nil; self.discoveryAvailable = false
             }
             self.finishPendingWrites()
+        }
+        // Capacitor may load after the scene's initial activation notification.
+        DispatchQueue.main.async { [weak self] in
+            if UIApplication.shared.applicationState == .active { self?.resumeNetwork() }
+        }
+    }
+
+    private func resumeNetwork() {
+        notifyListeners("dataChanged", data: [:])
+        runtimeQueue.async {
+            self.foreground = true
+            do {
+                if try self.repositoryQueue.sync(execute: { try self.store().hasNetworkEnrollment() }) { _ = try self.ensureRuntime() }
+            } catch { self.networkError(error) }
         }
     }
 
@@ -202,7 +209,7 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
         fence.setActive(true)
         let created = try NativeSyncRuntime { [weak self] method, input in
             let result = try queue.sync { try fence.check(); return try nativeStore.nativeCall(method, input) }
-            if ["syncApply", "shareCommit", "syncWriteMedia", "shareWriteMedia", "syncEnroll"].contains(method) {
+            if ["syncApply", "shareCommit", "syncEnroll", "syncCoalesceTags"].contains(method) || (["syncWriteMedia", "shareWriteMedia"].contains(method) && result["complete"] as? Bool == true) {
                 DispatchQueue.main.async { self?.notifyListeners("dataChanged", data: [:]) }
             }
             return result

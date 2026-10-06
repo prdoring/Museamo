@@ -41,7 +41,7 @@ final class RuntimeInteropTests: XCTestCase {
         try owner.local("saveTag", ["id": tag, "name": "Tasks", "type": "checklist"]); try owner.local("saveTag", ["id": privateTag, "name": "Private"])
         _ = try owner.save("Secret outside the shared tag", [privateTag]); let sharedID = try owner.save("Earlier private history", [tag, privateTag])
         let original = directory.appendingPathComponent("original.jpg"), originalBytes = Data(repeating: 3, count: 19000); try originalBytes.write(to: original)
-        let media = try owner.queue.sync { try owner.store.importMedia(from: original, metadata: ["kind": "image", "mimeType": "image/jpeg", "filename": "original.jpg"]) }
+        let media = try owner.queue.sync { try owner.store.importMedia(from: original, metadata: ["kind": "image", "mimeType": "image/jpeg", "filename": "original.jpg", "width": 100, "height": 100]) }
         let location: [String: Any] = ["latitude": 37.7, "longitude": -122.4, "capturedAt": 10, "token": UUID().uuidString.lowercased()]
         try owner.local("updateEntry", ["id": sharedID, "text": "Shared checklist", "tagIds": [tag, privateTag], "attachmentIds": [media["id"]!], "location": location])
         try owner.local("setStar", ["id": sharedID, "starred": true]); _ = try member.save("Member private thought"); _ = try personal.save("Personal existing thought")

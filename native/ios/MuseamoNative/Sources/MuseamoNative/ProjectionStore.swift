@@ -89,6 +89,19 @@ extension LibraryStore {
                 try putEntry(incoming)
             } else { try putProjectedTag(incoming) }
         } else { try db.run("DELETE FROM \(kind == "thought" ? "entries" : "tags") WHERE id=?",[entity]) }
+        if kind == "tag" {
+            // A tag may arrive after its thought, or be removed separately. Rebuild only
+            // local projections; do not manufacture signed edits from remote delivery.
+            let affected = try operations("verified=1 AND kind='thought'").filter { value in
+                guard let payload = value["payload"] as? [String: Any] else { return false }
+                return try strings(payload,"tagIds").map(canonicalTag).contains(entity)
+            }
+            for thought in Set(try affected.map { try string(revision($0), "entityId") }) { try project("thought", thought) }
+            if incoming == nil {
+                for row in try db.run("SELECT payload FROM drafts") { var value = try decode(row["payload"]); value["tagIds"] = try validTags(strings(value, "tagIds")); try putDraft(value) }
+                for row in try db.run("SELECT payload FROM profiles") { try saveProfile(decode(row["payload"])) }
+            }
+        }
         if let selectedID { try setMetadata("head:\(kind):\(entity)",selectedID) }
         for value in values {
             let token = try revisionID(value)
