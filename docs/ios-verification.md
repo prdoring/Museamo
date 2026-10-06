@@ -12,7 +12,7 @@ The UI test ran on **iPhone 16 Pro / iOS 18.5 simulator**, with Xcode 26.3 and S
 
 No connected-feature TestFlight build number or physical-device result has been recorded. The prior signed/uploaded text-only build does not validate these changes. Use the [candidate acceptance record](ios-sharing-acceptance.md) to record the exact commit/build/devices and every required scenario. Backups and automatic iPhone location capture remain deferred; see [privacy/encryption inventory](ios-privacy-inventory.md).
 
-The PR is unmerged. The existing trusted-main release workflow also publishes Windows/Android packages when it calls TestFlight, so promoting this candidate is an owner release decision. A successful unsigned archive does not confirm signing, Apple processing, or physical acceptance.
+The PR is unmerged. A manually requested iPhone-only branch candidate requires successful own-repository Checks for its exact commit, including frontend, iPhone and aggregate jobs, before signing credentials are used. Upload defaults off. This permits signing validation without the broader Windows/Android publication performed by the mainline release workflow. See [candidate build instructions](testflight-setup.md#6-build-then-upload). A successful unsigned archive does not confirm signing, Apple processing, or physical acceptance.
 
 ## Historical offline foundation — October 4, 2026
 

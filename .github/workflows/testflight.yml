@@ -27,6 +27,11 @@ on:
         required: true
   workflow_dispatch:
     inputs:
+      candidate:
+        description: Build an iPhone-only candidate from a checked codex branch
+        required: true
+        default: false
+        type: boolean
       upload:
         description: Upload the signed build to Apple TestFlight
         required: true
@@ -35,6 +40,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: museamo-testflight
@@ -43,9 +49,11 @@ concurrency:
 
 jobs:
   distribute:
-    # Reusable calls inherit the caller's event; trust only successful own-repo main CI.
+    # Branch candidates require an explicit manual dispatch and exact-commit checks below.
+    # Reusable calls inherit the caller's successful own-repo main CI event.
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && !inputs.candidate && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.candidate && startsWith(github.ref, 'refs/heads/codex/')) ||
       (github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
@@ -60,6 +68,38 @@ jobs:
       MUSEAMO_RELEASE_COMMIT: ${{ inputs.release_commit }}
       MUSEAMO_RELEASE_VERSION: ${{ inputs.release_version }}
     steps:
+      - name: Require successful checks for the exact candidate commit
+        if: github.event_name == 'workflow_dispatch' && inputs.candidate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName !== 'workflow_dispatch' ||
+                !context.ref.startsWith('refs/heads/codex/') ||
+                !/^[a-f0-9]{40}$/.test(context.sha)) {
+              throw new Error('Candidates require a manual dispatch of an own-repository codex branch.');
+            }
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              ...context.repo, workflow_id: 'ci.yml', head_sha: context.sha, per_page: 100,
+            });
+            const checked = data.workflow_runs.find(run =>
+              run.head_sha === context.sha && run.status === 'completed' &&
+              run.conclusion === 'success' &&
+              ['push', 'pull_request', 'workflow_dispatch'].includes(run.event) &&
+              run.repository?.full_name === repository &&
+              run.head_repository?.full_name === repository);
+            if (!checked) throw new Error('This exact candidate commit needs successful own-repository Checks before signing.');
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              ...context.repo, run_id: checked.id, filter: 'latest', per_page: 100,
+            });
+            for (const name of ['tests', 'ios', 'build']) {
+              if (!jobs.some(job => job.name === name && job.status === 'completed' && job.conclusion === 'success')) {
+                throw new Error(`Candidate Checks must include successful ${name}; skipped checks are insufficient.`);
+              }
+            }
+            core.setOutput('checked-run', checked.id);
+            await core.summary.addHeading('Checked iPhone candidate')
+              .addRaw(`Commit: ${context.sha}\n\nChecks: ${checked.html_url}\n`).write();
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_commit || github.sha }}

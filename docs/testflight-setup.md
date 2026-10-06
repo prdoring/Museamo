@@ -2,7 +2,7 @@
 
 The route is **Windows → GitHub's Mac build machine → Apple TestFlight → your iPhone**. You can do the setup in a Windows browser and terminal; no personal Mac is required. The current app targets iPhone on iOS 16.4 or newer. Start with your own internal testing group.
 
-Successful **Checks** runs for app or bundle changes pushed to `main` start **Mainline release**, which calls `iPhone TestFlight` with the reserved release commit and version and uploads automatically. Documentation-, test-, and known tooling-only changes skip release builds and uploads; see [CI scope](ci.md). Windows and Android publication proceeds independently. Pull requests never upload. You can still manually trigger `iPhone TestFlight` from `main` for validation; its upload checkbox defaults to off. A signed package, a successful upload, a processed TestFlight build, and installation on hardware are separate milestones.
+Successful **Checks** runs for app or bundle changes pushed to `main` start **Mainline release**, which calls `iPhone TestFlight` with the reserved release commit and version and uploads automatically. Documentation-, test-, and known tooling-only changes skip release builds and uploads; see [CI scope](ci.md). Windows and Android publication proceeds independently. Pull requests never upload automatically. Manual TestFlight validation supports `main`, or an explicitly requested own-repository `codex/` branch candidate with successful Checks for that exact commit. The candidate path builds only the iPhone app; upload defaults off. A signed package, a successful upload, a processed TestFlight build, and installation on hardware are separate milestones.
 
 ## 1. Enroll your Apple Account
 
@@ -124,7 +124,17 @@ Base64 is a file encoding, not encryption. Store those values only as secrets. T
 
 ## 6. Build, then upload
 
-The workflow must first be reviewed and merged into `main` before it appears in GitHub's Actions list.
+The workflow must exist on `main` to be registered in GitHub's Actions list. Museamo already has this workflow. Manual runs can use its reviewed branch version for an iPhone-only candidate before merging.
+
+For the connected-feature candidate, wait for all PR Checks to pass at the current branch commit, then run from Windows:
+
+```powershell
+gh workflow run testflight.yml --ref codex/ios-sharing -f candidate=true -f upload=false
+```
+
+The branch path is restricted to explicit manual runs of own-repository `codex/` branches. Before checkout or accessing signing credentials, it verifies a successful `ci.yml` run for the exact dispatched commit, and requires the frontend, iPhone and aggregate jobs to have passed rather than been skipped. A newer push requires new Checks. It uses the existing distribution certificate/profile and cleans them up on success or failure. This does not merge the PR or publish Windows/Android packages. After reviewing the signed package and completing the [encryption declaration](ios-privacy-inventory.md), repeat with `-f upload=true` to build a new numbered package and upload it.
+
+For mainline validation:
 
 1. Open [Museamo's Actions page](https://github.com/prdoring/Museamo/actions).
 2. Select **iPhone TestFlight**.
@@ -135,14 +145,14 @@ The workflow must first be reviewed and merged into `main` before it appears in 
 7. Run the workflow again on **main**, this time checking the upload box. This builds a new numbered package, validates it with Apple, and uploads it to App Store Connect.
 8. Wait for Apple processing. A successful GitHub upload is not yet a ready-to-install build. Apple emails the processing result; check **App Store Connect → Museamo → TestFlight → iOS**.
 
-Automatic build versions follow the tagged release's package.json, starting with `0.4.1`; manual validation follows main's development version. All automatic jobs receive the resolved release commit explicitly, rather than using workflow_run's default SHA. Build numbers increase with the calling workflow's runs and retries, within Apple's component limits. Retry failed jobs in the original Mainline release run to preserve the reserved version. Avoid separate manual uploads of the same version using an unrelated workflow counter.
+Automatic build versions follow the tagged release's package.json, starting with `0.4.1`; manual validation follows the checked-out branch's development version. All automatic jobs receive the resolved release commit explicitly, rather than using workflow_run's default SHA. Build numbers increase with the calling workflow's runs and retries, within Apple's component limits. Retry failed jobs in the original Mainline release run to preserve the reserved version. Avoid separate manual uploads of the same version using an unrelated workflow counter.
 
 The upload calls Apple's `altool` through Xcode. [Apple's upload instructions](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)
 
 ## 7. Install the first build on your iPhone
 
 1. Install Apple's **TestFlight** app from the iPhone App Store if you haven't already.
-2. In **App Store Connect → Museamo → TestFlight**, add beta test information describing this initial text-library build.
+2. In **App Store Connect → Museamo → TestFlight**, add beta test information describing the candidate's QR tag sharing, personal-device linking, media and manual locations.
 3. Complete the build's encryption questionnaire using [the candidate privacy/encryption inventory](ios-privacy-inventory.md). The connected build bundles Rust's standard cryptography and declares `ITSAppUsesNonExemptEncryption=true`; the older text-only build's “None of the algorithms” answer must not be reused. Review Apple's [documentation table](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption) for the algorithms and distribution territories, and complete any required owner documentation before testing/distribution.
 4. Under **Internal Testing**, click **+** to create a group named **My devices** and select **Enable automatic distribution** so future processed mainline builds reach the group automatically.
 5. Add yourself as an internal tester. As the Account Holder, your App Store Connect user is eligible; use the email associated with that user.
@@ -152,7 +162,7 @@ The upload calls Apple's `altool` through Xcode. [Apple's upload instructions](h
 
 Internal testing uses App Store Connect team members. External friends/testers use a separate external group and may require Beta App Review. Start with yourself before setting that up. A TestFlight build is available for testing for up to 90 days; upload newer builds as you develop. [Apple's internal tester instructions](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers)
 
-Current iOS support includes text, durable drafts, search, Gems, tags/checklists, and Recovery. Media, locations, portable backups, sync, shared hashtags, and widgets remain future work. Use sample data for the first hardware checks and follow [the iPhone checklist](ios-device-checklist.md).
+The connected candidate includes text, durable drafts, search, Gems, tags/checklists, Recovery, QR tag sharing, personal-device linking, photos/videos and manual locations. Portable backups, automatic location capture and widgets remain deferred. Use sample data for the first hardware checks, follow [the iPhone checklist](ios-device-checklist.md), and record the required connected scenarios in [candidate acceptance](ios-sharing-acceptance.md).
 
 ## If something fails
 
@@ -160,7 +170,8 @@ Current iOS support includes text, durable drafts, search, Gems, tags/checklists
 | --- | --- |
 | Enrollment pending or App Store Connect unavailable | Finish Apple verification and required agreements first |
 | Workflow missing | Ensure `testflight.yml` has been merged into `main` |
-| Job skipped | Select `main` when running the workflow |
+| Job skipped | Select `main` for regular validation, or explicitly enable `candidate` on an own-repository `codex/` branch |
+| Candidate checks rejected | Wait for successful Checks at the exact branch commit; frontend, iPhone and aggregate jobs must all run and pass |
 | Missing signing configuration | Run `ios:signing -- configure`, or check exact secret and variable names |
 | OpenSSL not found | Install Git for Windows or set `MUSEAMO_OPENSSL` |
 | Certificate does not match the key | Use the certificate issued for this CSR; preserve the existing private key |
@@ -172,4 +183,4 @@ Current iOS support includes text, durable drafts, search, Gems, tags/checklists
 | Missing Compliance | Complete Apple's build encryption questionnaire |
 | No invitation/build in TestFlight | Confirm the processed build and your user are both in the internal group |
 
-Signing and hardware verification are pending until your membership, credentials, and first device installation are complete. Windows tests and the unsigned CI archive cannot verify those steps.
+The prior text-only build has already been signed and uploaded. Connected-feature signing, Apple processing and hardware results must be recorded separately. Windows tests and the unsigned CI archive cannot verify those steps.

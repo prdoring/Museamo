@@ -4,7 +4,7 @@ The connected iPhone candidate reuses React in Capacitor, Swift/SQLite storage, 
 
 ## Build from Windows
 
-Windows can edit and test the frontend/Rust protocol. Apple compilation requires macOS and Xcode's SDKs, so use a draft PR's Checks workflow for Swift tests, the simulator build, and unsigned iPhone archives. The trusted-main TestFlight workflow retains existing signing credentials and cleanup. Do not upload an unverified candidate or use the text-only encryption answer; see [privacy/encryption inventory](ios-privacy-inventory.md).
+Windows can edit and test the frontend/Rust protocol. Apple compilation requires macOS and Xcode's SDKs, so use a draft PR's Checks workflow for Swift tests, the simulator build, and unsigned iPhone archives. The TestFlight workflow can also sign an explicitly requested `codex/` branch candidate after successful Checks for that exact commit, including frontend, iPhone and aggregate jobs. This iPhone-only path does not publish Windows/Android packages. Existing signing credentials and cleanup are retained, and upload defaults off. See [candidate build instructions](testflight-setup.md#6-build-then-upload). Do not reuse the text-only encryption answer; complete the owner review in the [privacy/encryption inventory](ios-privacy-inventory.md) before distribution.
 
 ## Build on a Mac
 
