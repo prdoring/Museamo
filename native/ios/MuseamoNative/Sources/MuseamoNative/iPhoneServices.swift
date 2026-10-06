@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 import CoreLocation
 import CoreImage
 import ImageIO
+import Network
 import Darwin
 
 public enum InvitationImage {
@@ -176,6 +177,8 @@ public final class AppleDiscovery: NSObject, NetServiceDelegate, NetServiceBrows
     private var hint: ((String, [String: Any]) -> Void)?
     private var status: ((Bool, String?) -> Void)?
     private var device = ""
+    private var monitor: NWPathMonitor?
+    private var generation = 0
     public func start(state: [String: Any], hint: @escaping (String, [String: Any]) -> Void, status: @escaping (Bool, String?) -> Void) {
         stop(); self.hint = hint; self.status = status; device = state["deviceId"] as? String ?? ""
         let sharing = state["sharing"] as? [String: Any] ?? [:]
@@ -186,8 +189,18 @@ public final class AppleDiscovery: NSObject, NetServiceDelegate, NetServiceBrows
             service.setTXTRecord(NetService.data(fromTXTRecord: txt)); service.delegate = self; services.append(service); service.publish()
             let browser = NetServiceBrowser(); browser.delegate = self; browsers.append(browser); browser.searchForServices(ofType: type, inDomain: "local.")
         }
+        let pathMonitor = NWPathMonitor(), current = generation
+        var initial = true
+        pathMonitor.pathUpdateHandler = { [weak self] _ in
+            if initial { initial = false; return }
+            DispatchQueue.main.async {
+                guard let self, self.generation == current else { return }
+                self.start(state: state, hint: hint, status: status)
+            }
+        }
+        monitor = pathMonitor; pathMonitor.start(queue: DispatchQueue(label: "com.prdoring.museamo.network-path"))
     }
-    public func stop() { hint = nil; status = nil; for service in services + resolving { service.stop(); service.delegate = nil }; for browser in browsers { browser.stop(); browser.delegate = nil }; services = []; browsers = []; resolving = [] }
+    public func stop() { generation += 1; monitor?.cancel(); monitor = nil; hint = nil; status = nil; for service in services + resolving { service.stop(); service.delegate = nil }; for browser in browsers { browser.stop(); browser.delegate = nil }; services = []; browsers = []; resolving = [] }
     public func netServiceDidPublish(_ sender: NetService) { status?(true, nil) }
     public func netService(_ sender: NetService, didNotPublish errorDict: [String: NSNumber]) { failed(errorDict) }
     public func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) { failed(errorDict) }

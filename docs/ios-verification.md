@@ -1,4 +1,12 @@
-# iOS offline foundation verification
+# iOS verification
+
+## Connected iPhone candidate — October 6, 2026
+
+Implementation is in [draft PR #13](https://github.com/prdoring/Museamo/pull/13). Local checks passed: 148 frontend tests, 50 Rust tests, TypeScript, Apple framework-builder/change-classification tests, and 11 signing/distribution tests. Desktop passed 39 tests in the sandbox; the remaining DPAPI test passed under the normal Windows account. The first Mac run built all five Rust static-library targets and the XCFramework; packaging and Swift compiler diagnostics were corrected for a follow-up run. Final Mac/Android/desktop check records will be added after those runs finish.
+
+No connected-feature TestFlight build number or physical-device result has been recorded. The prior signed/uploaded text-only build does not validate these changes. Use the [candidate acceptance record](ios-sharing-acceptance.md) to record the exact commit/build/devices and every required scenario. Backups and automatic iPhone location capture remain deferred; see [privacy/encryption inventory](ios-privacy-inventory.md).
+
+## Historical offline foundation — October 4, 2026
 
 Verified locally October 4, 2026 with Node 22, Xcode 26.6, iOS SDK/simulator 26.5, and Rust 1.99.0. The app targets iPhone on iOS 16.4 or newer. Signed installation, physical hardware, and the oldest supported iOS version remain unverified.
 

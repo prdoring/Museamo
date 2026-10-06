@@ -40,7 +40,10 @@ final class RuntimeInteropTests: XCTestCase {
         let tag = UUID().uuidString.lowercased(), privateTag = UUID().uuidString.lowercased()
         try owner.local("saveTag", ["id": tag, "name": "Tasks", "type": "checklist"]); try owner.local("saveTag", ["id": privateTag, "name": "Private"])
         _ = try owner.save("Secret outside the shared tag", [privateTag]); let sharedID = try owner.save("Earlier private history", [tag, privateTag])
-        try owner.local("updateEntry", ["id": sharedID, "text": "Shared checklist", "tagIds": [tag, privateTag]])
+        let original = directory.appendingPathComponent("original.jpg"), originalBytes = Data(repeating: 3, count: 19000); try originalBytes.write(to: original)
+        let media = try owner.queue.sync { try owner.store.importMedia(from: original, metadata: ["kind": "image", "mimeType": "image/jpeg", "filename": "original.jpg"]) }
+        let location: [String: Any] = ["latitude": 37.7, "longitude": -122.4, "capturedAt": 10, "token": UUID().uuidString.lowercased()]
+        try owner.local("updateEntry", ["id": sharedID, "text": "Shared checklist", "tagIds": [tag, privateTag], "attachmentIds": [media["id"]!], "location": location])
         try owner.local("setStar", ["id": sharedID, "starred": true]); _ = try member.save("Member private thought"); _ = try personal.save("Personal existing thought")
         try member.local("saveTag", ["id": UUID().uuidString.lowercased(), "name": "Tasks"])
         _ = try owner.runtime.command("startTagSharing", ["tagId": tag])
@@ -51,6 +54,11 @@ final class RuntimeInteropTests: XCTestCase {
         try awaitState { try member.thoughts().contains { $0["text"] as? String == "Shared checklist" } }
         let copied = try XCTUnwrap(member.thoughts().first { $0["text"] as? String == "Shared checklist" })
         XCTAssertEqual(copied["starred"] as? Bool, false); XCTAssertEqual(copied["tagIds"] as? [String], [joinedTag])
+        XCTAssertEqual((copied["location"] as? [String: Any])?["latitude"] as? Double, 37.7)
+        XCTAssertEqual((copied["attachments"] as? [[String: Any]])?.first?["checksum"] as? String, media["checksum"] as? String)
+        let mediaID = media["id"] as! String
+        try awaitState { try member.queue.sync { try member.store.originalURL(mediaID) != nil } }
+        XCTAssertEqual(try member.queue.sync { try Data(contentsOf: XCTUnwrap(member.store.originalURL(mediaID))) }, originalBytes)
         XCTAssertFalse(try member.thoughts().contains { ($0["text"] as? String)?.contains("Secret") == true })
         let history = try XCTUnwrap(member.local("listRecovery")["items"] as? [[String: Any]])
         XCTAssertFalse(history.contains { ($0["payload"] as? [String: Any])?["text"] as? String == "Earlier private history" })
@@ -58,6 +66,9 @@ final class RuntimeInteropTests: XCTestCase {
         let copiedID = try XCTUnwrap(copied["id"] as? String)
         try member.local("setCompleted", ["id": copiedID, "completed": true])
         try awaitState { try owner.thoughts().first { $0["text"] as? String == "Shared checklist" }?["completed"] as? Bool == true }
+        let second = UUID().uuidString.lowercased(); try owner.local("saveTag", ["id": second, "name": "Second shared list"])
+        _ = try owner.runtime.command("startTagSharing", ["tagId": second])
+        XCTAssertThrowsError(try owner.local("updateEntry", ["id": sharedID, "text": "Must stay in one list", "tagIds": [tag, second]]))
         // Linking is a separate handshake with matching-code confirmation and merge consent.
         let address = try XCTUnwrap(owner.runtime.command("getSyncState")["address"] as? String)
         _ = try personal.runtime.command("linkDevice", ["address": address])
@@ -65,7 +76,7 @@ final class RuntimeInteropTests: XCTestCase {
         let lhs = try XCTUnwrap(owner.runtime.command("getSyncState")["pairing"] as? [String: Any]), rhs = try XCTUnwrap(personal.runtime.command("getSyncState")["pairing"] as? [String: Any])
         XCTAssertEqual(lhs["code"] as? String, rhs["code"] as? String)
         _ = try owner.runtime.command("confirmPairing", ["sessionId": lhs["sessionId"]!, "confirmed": true]); _ = try personal.runtime.command("confirmPairing", ["sessionId": rhs["sessionId"]!, "confirmed": true])
-        try awaitState { try (owner.runtime.command("getSyncState")["pairing"] as? [String: Any])?["summary"] != nil && (personal.runtime.command("getSyncState")["pairing"] as? [String: Any])?["summary"] != nil }
+        try awaitState { try (owner.runtime.command("getSyncState")["pairing"] as? [String: Any])?["summary"] is [String: Any] && (personal.runtime.command("getSyncState")["pairing"] as? [String: Any])?["summary"] is [String: Any] }
         XCTAssertFalse(try personal.thoughts().contains { $0["text"] as? String == "Shared checklist" })
         _ = try owner.runtime.command("acceptEnrollment", ["sessionId": lhs["sessionId"]!, "accepted": true]); _ = try personal.runtime.command("acceptEnrollment", ["sessionId": rhs["sessionId"]!, "accepted": true])
         try awaitState { try personal.thoughts().contains { $0["text"] as? String == "Shared checklist" } }
@@ -77,5 +88,7 @@ final class RuntimeInteropTests: XCTestCase {
         _ = try member.runtime.command("leaveTagShare", ["tagId": joinedTag])
         XCTAssertTrue(try member.thoughts().contains { $0["text"] as? String == "Shared checklist" })
         XCTAssertFalse(try (member.local("library")["tags"] as? [[String: Any]] ?? []).contains { $0["sharing"] != nil })
+        _ = try owner.runtime.command("stopTagSharing", ["tagId": tag])
+        XCTAssertTrue(try owner.thoughts().contains { $0["text"] as? String == "Shared checklist" && $0["starred"] as? Bool == true })
     }
 }

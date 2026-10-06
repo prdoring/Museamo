@@ -301,7 +301,9 @@ public final class LibraryStore {
         let type = try optionalString(input, "type") ?? existing?["type"] as? String ?? "standard"
         guard ["standard", "checklist"].contains(type) else { throw LibraryError("Unknown category type.") }
         let normalized = Hashtags.normalized(name)
-        guard try db.run("SELECT id FROM tags WHERE normalized_name = ? AND id != ?", [normalized, id]).allSatisfy({ try sharingMetadata($0["id"] as! String) != nil }) else { throw LibraryError("A tag with this name already exists.") }
+        if try sharingMetadata(id) == nil {
+            guard try db.run("SELECT id FROM tags WHERE normalized_name = ? AND id != ?", [normalized, id]).allSatisfy({ try sharingMetadata($0["id"] as! String) != nil }) else { throw LibraryError("A tag with this name already exists.") }
+        }
         let old = try existing.map(tagJSON)
         try db.run("INSERT INTO tags(id,name,normalized_name,type) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, normalized_name=excluded.normalized_name, type=excluded.type", [id, name, normalized, type])
         let saved: [String: Any] = ["id": id, "name": name, "type": type]

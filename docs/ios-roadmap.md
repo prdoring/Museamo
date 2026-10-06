@@ -1,5 +1,7 @@
 # iOS implementation roadmap
 
+October 6 update: the connected iPhone candidate in [PR #13](https://github.com/prdoring/Museamo/pull/13) implements the Rust C binding, schema-2 journaling/enrollment, Photos/media transfer, manual location, Apple Bonjour, QR sharing and personal-device linking. Mac compilation and [physical acceptance](ios-sharing-acceptance.md) gate completion. Portable backups are explicitly deferred; automatic location and widgets remain unavailable. The original phase descriptions below are historical planning context; use [current development instructions](ios-development.md) for the candidate.
+
 Status: repository version 0.4.0, updated October 4, 2026. The Capacitor iPhone host, explicit iOS routing, Swift bridge, and SQLite text library are implemented. The current milestone covers durable drafts, capture/edit/delete/undo, search, Gems, tags/checklists, profiles at the repository boundary, and local Recovery.
 
 See [iOS development](ios-development.md) for build commands and [verification results](ios-verification.md) for recorded checks. Signed installation and physical-device behavior remain unverified; the [iPhone device checklist](ios-device-checklist.md) is the next handoff. The phases below retain the broader roadmap scope, including unfinished media, backup, sync, and distribution work.

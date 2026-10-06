@@ -5,22 +5,26 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const appleTargets = ['aarch64-apple-ios', 'aarch64-apple-ios-sim', 'x86_64-apple-ios', 'aarch64-apple-darwin', 'x86_64-apple-darwin'];
-export function buildAppleCore({ platform = process.platform, run = spawnSync } = {}) {
+export function buildAppleCore({ platform = process.platform, run = spawnSync, root: directory = root, env: environment = process.env } = {}) {
   if (platform !== 'darwin') throw new Error('Apple sync frameworks require macOS and Xcode. Use the GitHub iPhone build workflow from Windows.');
-  const execute = (cmd, args, env = process.env) => {
-    const result = run(cmd, args, { cwd: root, env, stdio: 'inherit' });
+  directory = path.resolve(directory);
+  const targetDirectory = path.resolve(directory, environment.CARGO_TARGET_DIR || 'target');
+  const env = { ...environment, CARGO_TARGET_DIR: targetDirectory, IPHONEOS_DEPLOYMENT_TARGET: '16.4', MACOSX_DEPLOYMENT_TARGET: '13.0' };
+  delete env.CARGO_BUILD_TARGET;
+  const execute = (cmd, args) => {
+    const result = run(cmd, args, { cwd: directory, env, stdio: 'inherit' });
     if (result.error || result.status !== 0) throw new Error(`${cmd} failed building the Apple sync framework (${result.status ?? result.error?.message}).`);
   };
-  const staging = path.join(root, '.tools', 'sync-ios');
-  const destination = path.join(root, 'native', 'ios', 'MuseamoNative', 'Frameworks', 'MuseamoSyncCore.xcframework');
+  const staging = path.join(directory, '.tools', 'sync-ios');
+  const destination = path.join(directory, 'native', 'ios', 'MuseamoNative', 'Frameworks', 'MuseamoSyncCore.xcframework');
   mkdirSync(staging, { recursive: true });
   const headers = path.join(staging, 'headers');
   mkdirSync(headers, { recursive: true });
-  copyFileSync(path.join(root, 'crates', 'sync-core', 'include', 'museamo_sync.h'), path.join(headers, 'museamo_sync.h'));
+  copyFileSync(path.join(directory, 'crates', 'sync-core', 'include', 'museamo_sync.h'), path.join(headers, 'museamo_sync.h'));
   writeFileSync(path.join(headers, 'module.modulemap'), 'module MuseamoSyncCore { header "museamo_sync.h" export * }\n');
   execute('rustup', ['target', 'add', ...appleTargets]);
-  for (const target of appleTargets) execute('cargo', ['build', '--locked', '-p', 'museamo-sync-core', '--features', 'ffi', '--release', '--target', target], { ...process.env, IPHONEOS_DEPLOYMENT_TARGET: '16.4', MACOSX_DEPLOYMENT_TARGET: '13.0' });
-  const library = target => path.join(root, 'target', target, 'release', 'libmuseamo_sync_core.a');
+  for (const target of appleTargets) execute('cargo', ['build', '--locked', '-p', 'museamo-sync-core', '--features', 'ffi', '--release', '--target-dir', targetDirectory, '--target', target]);
+  const library = target => path.join(targetDirectory, target, 'release', 'libmuseamo_sync_core.a');
   for (const folder of ['simulator', 'macos']) mkdirSync(path.join(staging, folder), { recursive: true });
   const sim = path.join(staging, 'simulator', 'libmuseamo_sync_core.a'), mac = path.join(staging, 'macos', 'libmuseamo_sync_core.a');
   execute('lipo', ['-create', library(appleTargets[1]), library(appleTargets[2]), '-output', sim]);

@@ -23,7 +23,7 @@ Your library lives on your devices. Capture works offline, and your linked Andro
 - **Use your own devices.** Link Android and desktop libraries over your local network, with a matching-code check on both screens.
 - **Keep a way back.** Export portable ZIP backups and restore deleted thoughts or earlier versions from Recovery.
 
-The early **iPhone app** supports offline text capture and editing, durable drafts, search, Gems, tags, checklists, and local Recovery. Media, locations, portable backups, linked-device sync, shared hashtags, and widgets are still planned for iOS; their controls are hidden in the current app.
+The **iPhone candidate** adds QR tag sharing, personal-device sync, photos/videos, and manually saved locations to offline capture, drafts, search, Gems, tags, checklists, and Recovery. [Hardware acceptance is pending](docs/ios-sharing-acceptance.md). Portable backups, automatic location capture and widgets remain unavailable on iPhone.
 
 ## Install
 
@@ -66,7 +66,7 @@ Mac builds use the desktop library, including attachments, locations, backups, R
 2. Alternatively, build on a Mac and install through Xcode using the [iPhone device checklist](docs/ios-device-checklist.md).
 3. Open Museamo and tap **Message yourself…**. Save a text thought, then close and reopen the app to confirm it remains. Unsent drafts also survive relaunch.
 
-The iPhone build is an early text-library app with the features listed above. Installation currently requires testing access or a development build. Keep iPhone and desktop/Android libraries separate until iOS sync is implemented.
+The iPhone candidate reuses the sharing and linked-device screens. Installation requires TestFlight access or a development build. Complete [candidate verification](docs/ios-sharing-acceptance.md) using sample content before linking valuable libraries.
 
 ### Updating
 
@@ -155,7 +155,7 @@ These screenshots use synthetic test data. See [iOS verification](docs/ios-verif
 
 ## Your data and privacy
 
-Museamo stores your library locally and has no analytics or account system. Full-library sync is limited to devices you explicitly link. Android also supports explicitly shared hashtags; review the sharing screen before sharing their thoughts, attachments, or locations with other people.
+Museamo stores your library locally and has no analytics or account system. Full-library sync is limited to devices you explicitly link. Android and the iPhone candidate support explicitly shared hashtags; review the sharing screen before sharing their thoughts, attachments, or locations with other people.
 
 Some optional features use the internet: linked media contacts its host, address lookup may send coordinates to your device's geocoding service, and maps request OpenStreetMap tiles. Attached original files remain in your library. Android location capture uses foreground permission and does not track you in the background.
 
@@ -163,7 +163,7 @@ Some optional features use the internet: linked media contacts its host, address
 
 ## Development
 
-The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. iOS uses Capacitor with a Swift/SQLite bridge for its offline text library. Desktop uses Tauri with Rust/SQLite storage and targets Windows x64, Apple Silicon macOS, and Linux x64. Android and desktop share a Rust core for local-network sync.
+The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. iOS uses Capacitor with Swift/SQLite and a native Rust bridge. Desktop uses Tauri with Rust/SQLite storage and targets Windows x64, Apple Silicon macOS, and Linux x64. All native hosts share the Rust local-network protocol.
 
 For a temporary browser preview, install Node.js 22 or newer, then run:
 

@@ -28,6 +28,12 @@ extension LibraryStore {
             try putEntry(value)
         }
         for row in try db.run("SELECT payload FROM drafts") { var value = try decode(row["payload"]); value["tagIds"] = try validTags(Array(Set(strings(value,"tagIds").map(canonicalTag)))); try putDraft(value) }
+        for row in try db.run("SELECT payload FROM profiles") {
+            var value = try decode(row["payload"])
+            value["tagIds"] = try validTags(Array(Set(strings(value,"tagIds").map(canonicalTag))))
+            if let selected = try optionalString(value,"selectedTagId") { value["selectedTagId"] = try canonicalTag(selected) }
+            try saveProfile(value)
+        }
     }
     func coalesceTags(_ input: [String:Any]) throws {
         let marker = "coalesced:\(try string(input,"enrollmentId"))"
@@ -58,7 +64,7 @@ extension LibraryStore {
         if kind == "archiveThought" || kind == "archiveTag" {
             for value in try operations("verified=1 AND kind=? AND entity_id=?", [kind,source]) {
                 let token = try revisionID(value)
-                guard try !isPurged(token), try !isRetired("thought",source), let archive = value["payload"] as? [String:Any] else { continue }
+                guard try !isPurged(token), try !isRetired(kind == "archiveThought" ? "thought":"tag",source), let archive = value["payload"] as? [String:Any] else { continue }
                 try db.run("INSERT OR IGNORE INTO recovery(id,entity_id,created_at,payload,kind) VALUES(?,?,?,?,?)", [token,source,archive["createdAt"]!,try encode(object(archive,"payload")),archive["kind"]!])
             }
             return

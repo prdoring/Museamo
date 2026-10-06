@@ -3,6 +3,14 @@ import Foundation
 import MuseamoNative
 import UIKit
 
+/// A main-thread suspension fences callbacks even while a network command is returning.
+private final class CallbackFence {
+    private let lock = NSLock()
+    private var active = true
+    func setActive(_ value: Bool) { lock.lock(); active = value; lock.unlock() }
+    func check() throws { lock.lock(); let allowed = active; lock.unlock(); if !allowed { throw LibraryError("Sync is suspended.") } }
+}
+
 /// The WebView sees typed library operations, never database paths or native keys.
 @objc(MuseamoPlugin)
 public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -71,6 +79,7 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
     private var scanner: InvitationScanner?
     private var picker: OriginalPicker?
     private var polling: DispatchSourceTimer?
+    private let callbackFence = CallbackFence()
     private var activeObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
     private static let mutations: Set<String> = [
@@ -90,6 +99,7 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         backgroundObserver = NotificationCenter.default.addObserver(forName: UIScene.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self else { return }
+            self.callbackFence.setActive(false)
             self.scanner?.cancelScan(); self.location.cancel(); self.discovery.stop()
             self.runtimeQueue.async {
                 self.foreground = false; self.generation += 1; self.polling?.cancel(); self.polling = nil
@@ -187,9 +197,11 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
         guard foreground else { throw LibraryError("Reopen Museamo to resume sharing and device linking.") }
         if let runtime { return runtime }
         let queue = repositoryQueue
+        let fence = callbackFence
         let nativeStore = try queue.sync { try store() }
+        fence.setActive(true)
         let created = try NativeSyncRuntime { [weak self] method, input in
-            let result = try queue.sync { try nativeStore.nativeCall(method, input) }
+            let result = try queue.sync { try fence.check(); return try nativeStore.nativeCall(method, input) }
             if ["syncApply", "shareCommit", "syncWriteMedia", "shareWriteMedia", "syncEnroll"].contains(method) {
                 DispatchQueue.main.async { self?.notifyListeners("dataChanged", data: [:]) }
             }
@@ -198,6 +210,7 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
         runtime = created; generation += 1; let current = generation
         let state = created.initialState
         DispatchQueue.main.async {
+            guard UIApplication.shared.applicationState == .active else { return }
             self.discovery.start(state: state, hint: { [weak self] method, input in
                 self?.runtimeQueue.async {
                     guard let self, self.foreground, self.generation == current else { return }
