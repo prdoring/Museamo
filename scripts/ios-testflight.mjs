@@ -152,6 +152,19 @@ function build(env) {
   if (env.GITHUB_STEP_SUMMARY) writeFileSync(env.GITHUB_STEP_SUMMARY, `Museamo **${version} (${number})** was signed and exported for iPhone.\n\nCommit: \`${commit}\`. Upload is a separate step; a signed artifact alone is not a TestFlight installation.\n`, { flag: 'a' });
 }
 
+export function requireAppleDeliverySuccess(result, operation) {
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  // Recent altool can return zero even when ContentDelivery rejects the app.
+  // Require positive acknowledgement as well as a clean process result.
+  const rejected = /\b(?:VERIFY|UPLOAD|VALIDATION) FAILED\b|Failed to (?:validate|upload) package|Validation failed \(\d+\)/i.test(output);
+  const accepted = operation === 'validate'
+    ? /\b(?:VERIFY|VALIDATION) SUCCEEDED\b|No errors validating/i.test(output)
+    : /\bUPLOAD SUCCEEDED\b|No errors uploading/i.test(output);
+  if (result.error || result.status !== 0 || rejected || !accepted) {
+    throw new Error(`Apple ${operation} did not succeed. Check the delivery output above; a signed package is not an accepted TestFlight upload.`);
+  }
+}
+
 function upload(env) {
   validateUploadConfig(env);
   const p = paths(env);
@@ -162,8 +175,12 @@ function upload(env) {
   writeFileSync(path.join(keyDirectory, `AuthKey_${env.ASC_KEY_ID}.p8`), decodeSecret(env.ASC_API_KEY_BASE64, 'ASC_API_KEY_BASE64'), { mode: 0o600 });
   const childEnv = { ...env, API_PRIVATE_KEYS_DIR: keyDirectory };
   const args = ['-f', path.join(p.exportDir, files[0]), '-t', 'ios', '--apiKey', env.ASC_KEY_ID, '--apiIssuer', env.ASC_ISSUER_ID];
-  run('xcrun', ['altool', '--validate-app', ...args], { visible: true, env: childEnv });
-  run('xcrun', ['altool', '--upload-app', ...args], { visible: true, env: childEnv });
+  for (const operation of ['validate', 'upload']) {
+    const result = spawnSync('xcrun', ['altool', `--${operation}-app`, ...args], { cwd: root, env: childEnv, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    requireAppleDeliverySuccess(result, operation);
+  }
   if (env.GITHUB_STEP_SUMMARY) writeFileSync(env.GITHUB_STEP_SUMMARY, '\nApple accepted the upload. Processing in **App Store Connect → Museamo → TestFlight** follows; enable automatic distribution on your internal group to deliver processed builds.\n', { flag: 'a' });
 }
 
