@@ -2,11 +2,11 @@
 
 # Museamo
 
-**A private stream of thoughts for Android and Windows.**
+**A private stream of thoughts for Android, Windows, macOS, and iOS.**
 
 Message yourself when an idea arrives. Save a word, a reminder, a photo, or something you want to remember. Come back to a searchable feed, star your favorites as **Gems**, and collect related thoughts with **hashtags**.
 
-Your library lives on your devices. Capture works offline, and your linked Android and Windows apps sync directly over the local network. There is no account to create and no cloud service to keep running.
+Your library lives on your devices. Capture works offline, and your linked Android and desktop apps sync directly over the local network. There is no account to create and no cloud service to keep running. Apple Silicon Mac builds are available from source; the early iPhone app is available through TestFlight invitations or Xcode.
 
 [Download](https://github.com/prdoring/Museamo/releases) · [Getting started](#install) · [How to use it](#use-museamo) · [User guide](docs/user-guide.md) · [Development](#development)
 
@@ -20,18 +20,22 @@ Your library lives on your devices. Capture works offline, and your linked Andro
 - **Find the good bits.** Search your Stream, star thoughts as Gems, or browse by hashtag.
 - **Make a checklist.** Turn a tag into a Checklist and check off its thoughts.
 - **Keep more than text.** Add formatting, original photos and videos, clickable links, and optional locations.
-- **Use your own devices.** Link Android and Windows libraries over your local network, with a matching-code check on both screens.
+- **Use your own devices.** Link Android and desktop libraries over your local network, with a matching-code check on both screens.
 - **Keep a way back.** Export portable ZIP backups and restore deleted thoughts or earlier versions from Recovery.
+
+The early **iPhone app** supports offline text capture and editing, durable drafts, search, Gems, tags, checklists, and local Recovery. Media, locations, portable backups, linked-device sync, shared hashtags, and widgets are still planned for iOS; their controls are hidden in the current app.
 
 ## Install
 
-Open [GitHub Releases](https://github.com/prdoring/Museamo/releases) and choose a version with downloadable assets. Successful mainline checks automatically publish Windows and Android releases once signing is configured. Early test builds may be under **Pre-releases**.
+For Android and Windows, open [GitHub Releases](https://github.com/prdoring/Museamo/releases) and choose a version with downloadable assets. Successful mainline checks automatically publish Windows and Android releases once signing is configured. Early test builds may be under **Pre-releases**. Mac builds currently use the source build instructions below, and iPhone builds use TestFlight or Xcode.
 
-| Your device | Download | Requirements |
+| Your device | Install from | Requirements |
 | --- | --- | --- |
 | Android | `Museamo-VERSION-android.apk` (or `-android-debug.apk` for a test build) | Android 7 or newer; Android System WebView 111 or newer |
 | Windows — recommended | `Museamo-VERSION-windows-x64-setup.exe` | 64-bit Windows 10 or 11; includes WebView2 offline setup |
 | Windows — standalone | `Museamo-VERSION-windows-x64.exe` | 64-bit Windows 10 or 11 with Microsoft Edge WebView2 Runtime already installed |
+| macOS | [Build from source](#macos-desktop) | Apple Silicon Mac (M1 or newer); macOS 14 or newer |
+| iPhone — early build | TestFlight invitation or [Xcode build](#ios-development) | iOS 16.4 or newer; TestFlight access or a Mac with Xcode |
 
 ### Android
 
@@ -48,11 +52,29 @@ Open [GitHub Releases](https://github.com/prdoring/Museamo/releases) and choose 
 
 The standalone EXE runs without Museamo's installer, but still stores its library in your Windows user profile. Moving the EXE does not move the library. Use **Export** to transfer your data. Windows downloads are currently unsigned and may trigger a publisher warning; download them from this repository's release page.
 
+### macOS
+
+1. Follow the [macOS desktop build steps](#macos-desktop) on an Apple Silicon Mac.
+2. Open the generated DMG, drag **Museamo.app** into **Applications**, and open it.
+3. Choose **Message yourself…** to save a thought. To link an Android phone or another desktop, open **Settings → Linked devices** and allow local-network access if macOS asks.
+
+Mac builds use the desktop library, including attachments, locations, backups, Recovery, and local-network sync. The current Mac target is Apple Silicon. Local packages are development builds; see [desktop packaging](docs/desktop-packaging.md#macos) for signing, notarization, and packaged-app verification before distributing a Mac build.
+
+### iPhone (iOS)
+
+1. Install Apple's **TestFlight** app, accept your Museamo testing invitation, and tap **Install**. Maintainers can follow the [TestFlight setup guide](docs/testflight-setup.md) to configure builds and invite internal testers, including when developing on Windows.
+2. Alternatively, build on a Mac and install through Xcode using the [iPhone device checklist](docs/ios-device-checklist.md).
+3. Open Museamo and tap **Message yourself…**. Save a text thought, then close and reopen the app to confirm it remains. Unsent drafts also survive relaunch.
+
+The iPhone build is an early text-library app with the features listed above. Installation currently requires testing access or a development build. Keep iPhone and desktop/Android libraries separate until iOS sync is implemented.
+
 ### Updating
 
-Use **Settings → Backup → Export** first and keep the ZIP outside the app. Install the new APK over the existing app, or run the new Windows installer.
+On Android and desktop, use **Settings → Backup → Export** first and keep the ZIP outside the app. Install the new APK over the existing app, run the new Windows installer, or replace **Museamo.app** with the newer Mac build.
 
 Android accepts an update only when its signing key matches your installed version. Debug and release keys are different. If Android refuses an update, keep the existing installation and export your library before changing installations. Uninstalling or clearing app storage deletes Android data. Backups include saved thoughts and attachments, but exclude unfinished drafts.
+
+Update an invited iPhone build through TestFlight. Portable backup/export is not available on iOS yet, so keep the existing installation and use sample data while testing early builds.
 
 ## Use Museamo
 
@@ -62,7 +84,7 @@ Tap **Message yourself…**, type, and choose **Send**. Use the photo, formattin
 
 ![Composing a sample thought on Windows, with attachment, formatting, tag, location, and Send controls](docs/images/desktop-capture.jpg)
 
-On Windows, **Ctrl+N** opens capture and **Ctrl+F** opens search.
+On Windows, **Ctrl+N** opens capture and **Ctrl+F** opens search. On Mac, use **Command+N** and **Command+F**.
 
 ### 2. Put capture on your Android home screen
 
@@ -93,15 +115,15 @@ In **Tags**, open a tag's edit menu and select **Checklist**. Thoughts in that c
 
 The checklist icon in the **Stream** header filters the feed to to-dos across all Checklist tags.
 
-### 5. Bring your phone and PC together
+### 5. Bring your Android phone and desktop together
 
 Open **Settings → Linked devices** on both devices while they are on the same local network. Select the nearby device, compare the complete matching code on both screens, then approve **Combine and link** on both. Your saved thoughts, tags, locations, original attachments, and Recovery can then sync both ways.
 
-If discovery is blocked, use **Link using an address**. Guest Wi-Fi can prevent devices from reaching one another. Opening both apps and choosing **Sync now** helps Android catch up. Windows continues syncing in the tray when you close its window; choose **Quit** in the tray menu to stop it.
+If discovery is blocked, use **Link using an address**. Guest Wi-Fi can prevent devices from reaching one another. Opening both apps and choosing **Sync now** helps Android catch up. Windows continues syncing in the tray when you close its window; choose **Quit** in the tray menu to stop it. On Mac, closing the window also keeps Museamo running; reopen it from the Dock, and use **Quit Museamo** or **Command+Q** to stop it. iPhone linking and sync are still planned.
 
 [More about linking and sync](docs/offline-sync.md)
 
-### 6. Keep a backup
+### 6. Keep a backup on Android and desktop
 
 Choose **Settings → Backup → Export** and save the ZIP somewhere safe. **Import** restores a portable archive. Use **Recovery** to restore a deleted thought or an earlier version as a new thought.
 
@@ -119,6 +141,18 @@ Backups are unencrypted. Keep them somewhere you trust. Sync gives you copies on
 
 </details>
 
+<details>
+<summary>iPhone screenshots — light and dark simulator builds</summary>
+
+<p>
+  <img src="docs/images/ios/library-light.png" width="320" alt="iPhone simulator showing a saved sample thought in the light theme">
+  <img src="docs/images/ios/library-dark.png" width="320" alt="iPhone simulator showing a saved sample thought in the dark theme">
+</p>
+
+These screenshots use synthetic test data. See [iOS verification](docs/ios-verification.md) for simulator results and remaining hardware checks.
+
+</details>
+
 ## Your data and privacy
 
 Museamo stores your library locally and has no analytics or account system. Full-library sync is limited to devices you explicitly link. Android also supports explicitly shared hashtags; review the sharing screen before sharing their thoughts, attachments, or locations with other people.
@@ -129,7 +163,7 @@ Some optional features use the internet: linked media contacts its host, address
 
 ## Development
 
-The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. Desktop uses Tauri with Rust/SQLite storage. Android and desktop share a Rust core for local-network sync. An initial iPhone development app uses Capacitor with a Swift/SQLite bridge for offline text capture, durable drafts, search, Gems, tags/checklists, and local Recovery; media, locations, backups, and sync are future iOS work. See [iOS development](docs/ios-development.md) and the [iPhone hardware checklist](docs/ios-device-checklist.md). Local desktop builds target Windows x64, Apple Silicon macOS, and Linux x64; see [desktop build prerequisites and packaging](docs/desktop-packaging.md).
+The shared interface uses React and TypeScript. Android uses Capacitor with native Kotlin/Room storage and widgets. iOS uses Capacitor with a Swift/SQLite bridge for its offline text library. Desktop uses Tauri with Rust/SQLite storage and targets Windows x64, Apple Silicon macOS, and Linux x64. Android and desktop share a Rust core for local-network sync.
 
 For a temporary browser preview, install Node.js 22 or newer, then run:
 
@@ -138,9 +172,39 @@ npm ci
 npm run dev
 ```
 
-The preview resets on refresh and does not save a real library. Use its layout switch for the Windows view. Native builds require the tools in the [development guide](docs/development.md). The [Mac setup guide](docs/mac-setup.md) covers permanent Rust installation, Android phone installation, and release signing with a key shared through 1Password.
+The preview resets on refresh and does not save a real library. Use its layout switch for the desktop view. Native builds require the tools in the [development guide](docs/development.md).
 
-To test the initial iPhone app while developing on Windows, follow [the TestFlight setup guide](docs/testflight-setup.md). It covers Apple enrollment, signing from Windows, GitHub Mac builds, and installation through TestFlight.
+### macOS desktop
+
+Use an Apple Silicon Mac running macOS 14 or newer. Install Node.js 22 or newer, the repository's pinned Rust 1.99.0 toolchain, and Xcode or its Command Line Tools, then run:
+
+```sh
+npm ci
+rustup target add --toolchain 1.99.0 aarch64-apple-darwin
+npm run desktop:doctor -- --target aarch64-apple-darwin
+npm run desktop:build -- --target aarch64-apple-darwin -- --locked
+```
+
+The app and DMG are written under `target/aarch64-apple-darwin/release/bundle/`. Use `npm run desktop:dev` for development with live reload. Local compilation needs no Apple developer account or signing certificate; distributing a signed, notarized build is a separate step.
+
+[Desktop prerequisites and packaging](docs/desktop-packaging.md) · [Mac setup for Rust and Android builds](docs/mac-setup.md)
+
+### iOS development
+
+Use macOS with Xcode 26 or newer, an installed iPhone simulator platform, and Node.js 22 or newer. The app targets iPhone on iOS 16.4 or newer and uses Swift Package Manager; CocoaPods is not required.
+
+```sh
+npm ci
+npm run ios:run
+```
+
+`ios:run` builds, installs, and opens the app in an iPhone simulator. Use `npm run ios:open` to open Xcode, or `npm run ios:sync` to update the bundled interface after frontend edits. `npm run test:ios` checks native persistence; `npm run test:ios:ui` checks saved thoughts and drafts across simulator relaunches.
+
+For signed phone installation, follow the [iPhone device checklist](docs/ios-device-checklist.md). For TestFlight builds, including development from Windows, follow the [TestFlight setup guide](docs/testflight-setup.md), which covers Apple enrollment, signing, GitHub-hosted Mac builds, and testing invitations.
+
+[iOS development details](docs/ios-development.md) · [iOS verification](docs/ios-verification.md) · [iOS roadmap](docs/ios-roadmap.md)
+
+### Checks and releases
 
 ```sh
 npm run typecheck
