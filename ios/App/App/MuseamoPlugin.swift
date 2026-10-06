@@ -3,14 +3,6 @@ import Foundation
 import MuseamoNative
 import UIKit
 
-/// A main-thread suspension fences callbacks even while a network command is returning.
-private final class CallbackFence {
-    private let lock = NSLock()
-    private var active = true
-    func setActive(_ value: Bool) { lock.lock(); active = value; lock.unlock() }
-    func check() throws { lock.lock(); let allowed = active; lock.unlock(); if !allowed { throw LibraryError("Sync is suspended.") } }
-}
-
 /// The WebView sees typed library operations, never database paths or native keys.
 @objc(MuseamoPlugin)
 public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -79,7 +71,7 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
     private var scanner: InvitationScanner?
     private var picker: OriginalPicker?
     private var polling: DispatchSourceTimer?
-    private let callbackFence = CallbackFence()
+    private let callbackFence = NativeCallbackFence()
     private var activeObserver: NSObjectProtocol?
     private var backgroundObserver: NSObjectProtocol?
     private static let mutations: Set<String> = [
@@ -107,6 +99,7 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func resumeNetwork() {
+        callbackFence.setActive(true)
         notifyListeners("dataChanged", data: [:])
         runtimeQueue.async {
             self.foreground = true
@@ -206,9 +199,9 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
         let queue = repositoryQueue
         let fence = callbackFence
         let nativeStore = try queue.sync { try store() }
-        fence.setActive(true)
+        let lease = try fence.beginRuntime()
         let created = try NativeSyncRuntime { [weak self] method, input in
-            let result = try queue.sync { try fence.check(); return try nativeStore.nativeCall(method, input) }
+            let result = try queue.sync { try fence.check(lease); return try nativeStore.nativeCall(method, input) }
             if ["syncApply", "shareCommit", "syncEnroll", "syncCoalesceTags"].contains(method) || (["syncWriteMedia", "shareWriteMedia"].contains(method) && result["complete"] as? Bool == true) {
                 DispatchQueue.main.async { self?.notifyListeners("dataChanged", data: [:]) }
             }

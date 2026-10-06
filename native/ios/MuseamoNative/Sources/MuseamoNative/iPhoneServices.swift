@@ -211,16 +211,27 @@ public final class AppleDiscovery: NSObject, NetServiceDelegate, NetServiceBrows
     public func netServiceDidResolveAddress(_ sender: NetService) {
         let txt = sender.txtRecordData().map(NetService.dictionary(fromTXTRecord:)) ?? [:]
         guard let idBytes = txt["device"], let id = String(data: idBytes, encoding: .utf8), !id.isEmpty, id != device, id.utf8.count <= 128 else { return }
-        for data in sender.addresses ?? [] {
+        let endpoints: [(Int, String)] = (sender.addresses ?? []).compactMap { data in
             var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            let resolved = data.withUnsafeBytes { raw -> Bool in
-                guard let pointer = raw.baseAddress, data.count >= MemoryLayout<sockaddr>.size else { return false }
+            return data.withUnsafeBytes { raw -> (Int, String)? in
+                guard let pointer = raw.baseAddress, data.count >= MemoryLayout<sockaddr>.size else { return nil }
                 let address = pointer.assumingMemoryBound(to: sockaddr.self)
-                guard address.pointee.sa_family == sa_family_t(AF_INET) || address.pointee.sa_family == sa_family_t(AF_INET6) else { return false }
-                return getnameinfo(address, socklen_t(data.count), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0
+                let ipv6 = address.pointee.sa_family == sa_family_t(AF_INET6)
+                guard address.pointee.sa_family == sa_family_t(AF_INET) || ipv6,
+                      getnameinfo(address, socklen_t(data.count), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 else { return nil }
+                var ip = String(cString: host)
+                if ipv6 {
+                    guard data.count >= MemoryLayout<sockaddr_in6>.size else { return nil }
+                    let scope = pointer.assumingMemoryBound(to: sockaddr_in6.self).pointee.sin6_scope_id
+                    // Darwin emits %en0; Rust SocketAddr requires the numeric scope.
+                    ip = String(ip.split(separator: "%", maxSplits: 1)[0])
+                    if scope != 0 { ip += "%\(scope)" }
+                }
+                return (ipv6 ? 1 : 0, ipv6 ? "[\(ip)]:\(sender.port)" : "\(ip):\(sender.port)")
             }
-            guard resolved else { continue }
-            let ip = String(cString: host), endpoint = ip.contains(":") ? "[\(ip)]:\(sender.port)" : "\(ip):\(sender.port)"
+        }
+        // The existing listeners prefer IPv4; scoped IPv6 remains a fallback hint.
+        for (_, endpoint) in endpoints.sorted(by: { $0.0 < $1.0 }) {
             let shared = sender.type == "_museamo-share._tcp."
             if shared { guard txt["capability"] == Data("shared-tags-v1".utf8) else { continue } }
             else { guard txt["protocol"] == Data("1".utf8) else { continue } }

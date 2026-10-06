@@ -1582,6 +1582,32 @@ mod tests {
         assert!(parse_address("[::1]:45821").is_ok());
     }
     #[test]
+    fn sharing_enrollment_retries_the_persisted_root_after_a_lost_commit_response() {
+        struct InterruptedEnrollment { fake: Arc<Fake>, once: AtomicBool }
+        impl Platform for InterruptedEnrollment {
+            fn call(&self, method: &str, input: Value) -> Result<Value, String> {
+                let response = self.fake.call(method, input)?;
+                if method == "syncEnroll" && self.once.swap(false, Ordering::SeqCst) {
+                    return Err("Enrollment committed before the response was interrupted".into());
+                }
+                Ok(response)
+            }
+        }
+        let fake = Fake::new("enrollment-retry", 7);
+        let platform = Arc::new(InterruptedEnrollment { fake: fake.clone(), once: AtomicBool::new(true) });
+        let original = Coordinator::new(platform.clone()).unwrap();
+        assert!(original.sharing_proof(true).is_err());
+        let persisted: Persistent = serde_json::from_value(fake.db.lock().unwrap().state.clone().unwrap()).unwrap();
+        assert_eq!(persisted.group_id, fake.db.lock().unwrap().group);
+        original.stop();
+        let replacement = Coordinator::new(platform).unwrap();
+        let proof = replacement.sharing_proof(true).unwrap();
+        assert_eq!(proof["group"].as_str(), persisted.group_id.as_deref());
+        assert_eq!(proof["controls"].as_array().unwrap().len(), 1);
+        assert_eq!(fake.db.lock().unwrap().operations.len(), 1);
+        replacement.stop();
+    }
+    #[test]
     fn discovery_prefers_usable_ipv4_over_scoped_link_local_candidates() {
         let candidates = discovery_endpoints(
             [

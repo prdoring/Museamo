@@ -45,8 +45,11 @@ extension LibraryStore {
         value["id"] = id; value["byteSize"] = size; value["checksum"] = try fileHash(url)
         value["width"] = input["width"] ?? 0; value["height"] = input["height"] ?? 0
         let target = try mediaURL(id)
-        try FileManager.default.copyItem(at:url,to:target)
-        do { try db.transaction { try registerMedia(value) }; mediaPins.insert(id); return value }
+        do {
+            try FileManager.default.copyItem(at:url,to:target)
+            let file = try FileHandle(forWritingTo:target); defer { try? file.close() }; try file.synchronize()
+            try db.transaction { try registerMedia(value) }; mediaPins.insert(id); return value
+        }
         catch { try? FileManager.default.removeItem(at:target); throw error }
     }
     public func originalURL(_ id: String) throws -> URL? {
@@ -81,6 +84,7 @@ extension LibraryStore {
     }
     func scopedMedia(_ scope: String) throws -> Set<String> {
         guard let value = (try sharingRegistry()["scopes"] as? [String:[String:Any]])?[scope] else { throw LibraryError("Unknown shared collection.") }
+        guard let person = try metadata("group"), scopeActive(value, person) else { throw LibraryError("You no longer belong to this shared collection.") }
         return Set((value["records"] as? [[String:Any]] ?? []).flatMap { ($0["payload"] as? [String:Any])?["attachments"] as? [[String:Any]] ?? [] }.compactMap { $0["id"] as? String })
     }
     func missingMedia(_ input: [String:Any],shared: Bool) throws -> [String:Any] {
@@ -135,6 +139,17 @@ extension LibraryStore {
             let previews = directory.appendingPathComponent("previews", isDirectory: true)
             if FileManager.default.fileExists(atPath: previews.path) { for url in try FileManager.default.contentsOfDirectory(at: previews, includingPropertiesForKeys: nil) where url.lastPathComponent.hasPrefix(id + ".") || url.lastPathComponent == id + "-thumbnail.jpg" { try FileManager.default.removeItem(at: url) } }
             try db.run("DELETE FROM media WHERE id=?",[id])
+        }
+        let registered = Set(try db.run("SELECT id FROM media").compactMap { $0["id"] as? String })
+        // A crash between copying an original and committing its metadata can leave an
+        // app-owned file without a row. Only opaque original IDs in our folders qualify.
+        for name in ["media", "staging"] {
+            let folder = directory.appendingPathComponent(name, isDirectory:true)
+            guard FileManager.default.fileExists(atPath:folder.path) else { continue }
+            for url in try FileManager.default.contentsOfDirectory(at:folder, includingPropertiesForKeys:nil) {
+                let id = url.lastPathComponent
+                if UUID(uuidString:id) != nil, !registered.contains(id), references[id] == nil, !mediaPins.contains(id) { try FileManager.default.removeItem(at:url) }
+            }
         }
     }
 }

@@ -1,6 +1,24 @@
 import Foundation
 import MuseamoSyncCore
 
+/// Suspension invalidates worker leases permanently, including after a new runtime starts.
+public final class NativeCallbackFence {
+    private let lock = NSLock()
+    private var active = false
+    private var generation = 0
+    public init() {}
+    public func setActive(_ value: Bool) { lock.lock(); active = value; if !value { generation += 1 }; lock.unlock() }
+    public func beginRuntime() throws -> Int {
+        lock.lock(); defer { lock.unlock() }
+        guard active else { throw LibraryError("Sync is suspended.") }
+        generation += 1; return generation
+    }
+    public func check(_ lease: Int) throws {
+        lock.lock(); let allowed = active && generation == lease; lock.unlock()
+        if !allowed { throw LibraryError("Sync is suspended.") }
+    }
+}
+
 /// Pure protocol helpers may be called from the repository queue without entering a runtime.
 public enum SyncCore {
     public static func evaluate(_ request: [String: Any]) throws -> [String: Any] {

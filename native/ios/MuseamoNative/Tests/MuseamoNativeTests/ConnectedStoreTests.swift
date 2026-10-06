@@ -63,6 +63,8 @@ final class ConnectedStoreTests: XCTestCase {
         var legacyMetadata = media; legacyMetadata.removeValue(forKey: "duration")
         try source.registerMedia(legacyMetadata)
         let id = try save(source, "", media: [media]); let mediaID = media["id"] as! String
+        let orphan = try source.mediaURL(UUID().uuidString.lowercased()); try bytes.write(to:orphan)
+        try source.collectMedia(); XCTAssertFalse(FileManager.default.fileExists(atPath:orphan.path))
         try source.releaseMedia([mediaID]); XCTAssertNotNil(try source.originalURL(mediaID))
         let target = try store("target"); try target.registerMedia(media)
         var remote = try source.requireEntry(id); remote["tagIds"] = [String](); try target.db.transaction { try target.putEntry(remote) }
@@ -121,6 +123,23 @@ final class ConnectedStoreTests: XCTestCase {
         XCTAssertEqual(try library.entry(thought)?["tagIds"] as? [String], [tag])
         XCTAssertEqual(try library.db.run("SELECT * FROM entry_tags").count, 1)
         XCTAssertEqual(try library.operations().count, count)
+    }
+    func testSuspendedWorkerRemainsFencedAfterAReplacementRuntimeStarts() throws {
+        let fence = NativeCallbackFence()
+        XCTAssertThrowsError(try fence.beginRuntime())
+        fence.setActive(true); let previous = try fence.beginRuntime()
+        let ready = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0), done = expectation(description: "old callback rejected")
+        DispatchQueue.global().async {
+            ready.signal(); _ = resume.wait(timeout: .now() + 2)
+            XCTAssertThrowsError(try fence.check(previous))
+            done.fulfill()
+        }
+        XCTAssertEqual(ready.wait(timeout: .now() + 2), .success)
+        fence.setActive(false); XCTAssertThrowsError(try fence.check(previous))
+        fence.setActive(true); let replacement = try fence.beginRuntime()
+        resume.signal(); wait(for: [done], timeout: 2)
+        XCTAssertNoThrow(try fence.check(replacement))
+        fence.setActive(false); XCTAssertThrowsError(try fence.check(replacement))
     }
     func testLegacyMigrationSnapshotIncludesWALAndRollbackPreservesAssociations() throws {
         let url = directory.appendingPathComponent("legacy.sqlite"), database = try SQLite(url: url)
