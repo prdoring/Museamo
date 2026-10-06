@@ -1,0 +1,18 @@
+# iPhone sharing privacy and encryption inventory
+
+Updated October 6, 2026 for the connected iPhone candidate. App Store Connect declarations must be reviewed for this candidate before distribution; the older text-only build's OS-only encryption answer no longer applies.
+
+| Data or access | Use and boundary |
+| --- | --- |
+| Camera | AVFoundation scans a QR only after explicit Scan. No captured camera images are saved or sent. Session stops on dismissal/suspension. |
+| Photos/videos | PHPicker reads only selected originals. App-owned copies, SHA-256 checksums and metadata are retained by drafts, saved thoughts, Recovery and retained journals. Originals transfer only through authenticated personal or shared sessions with durable references. |
+| Location | Core Location is invoked by the manual pin with foreground authorization. Automatic collection is off. Saved coordinates can be included in a selected shared tag or personal-device sync; opening Maps passes that chosen coordinate to Apple Maps. |
+| Local network | Apple Bonjour/DNS-SD advertises/discovers `_museamo._tcp` and `_museamo-share._tcp`. Hints do not establish trust. Noise sessions and signed memberships do. No relay, account, analytics or telemetry service. |
+| Shared content | Text, completion, attachment descriptors/originals and saved location for the selected tag only. Other tag assignments, Gems, profiles, drafts and prior private history are excluded. A collaborator can retain downloaded content after removal. |
+| Linked personal devices | Matching-code confirmation followed by separate library-combination consent. Saved thoughts, tags, retained history and originals replicate. Drafts/profiles/preferences stay local. Joining a person's shared tag does not combine personal libraries. |
+| Installation identity | Native-only P-256 signing key and Noise/X25519 material. Nonsynchronizing Keychain, `WhenUnlockedThisDeviceOnly`. Enrolled identities are not replaced when unavailable. The WebView cannot request low-level identity/signing/persistence callbacks. |
+| Storage APIs | SQLite durability/migration, app-owned file metadata and disk-space checks to avoid incomplete imports. No arbitrary paths from the WebView. A consistent pre-migration SQLite snapshot stays in this installation and is removed after permanent erasure. |
+
+Bundled `museamo-sync-core` uses the existing `Noise_XX_25519_ChaChaPoly_SHA256` suite, X25519, ChaCha20-Poly1305 and SHA-256. P-256 signatures use Security on iPhone; Rust verifies signatures. These are not solely OS-provided encryption implementations. `ITSAppUsesNonExemptEncryption` is conservatively `true`, so this build does not bypass Apple's questionnaire. Review the actual export classification and distribution territories with the app owner. Apple's [encryption documentation table](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption) requires different documentation for OS-provided, standard bundled, and proprietary encryption; France distribution can require a declaration. Do not choose “None” from the text-only build's instructions for this candidate, or invent a compliance code.
+
+App privacy answers should reflect actual data access by the developer and third parties, including optional linked-media hosts and map tile providers. No new developer-operated data collection service is added. The native package privacy manifest records disk-space access for writing files, with no tracking. Owner review in App Store Connect remains a distribution step, not an automated test assertion.

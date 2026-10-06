@@ -75,7 +75,7 @@ extension LibraryStore {
         case "shareLoad": return ["registry":try metadata("sharing.registry").map { try decode($0) } ?? null as Any]
         case "sharePending": return ["items":try db.run("SELECT payload FROM sharing_pending ORDER BY created_at,id").map { try decode($0["payload"]) }]
         case "shareSeed": return try sharingSeed(string(input,"tagId"))
-        case "shareCommit": return try db.transaction { try commitSharing(input) }
+        case "shareCommit": let result = try db.transaction { try commitSharing(input) }; try finishErasure(); return result
         default: throw LibraryError("Unknown sharing storage operation.")
         }
     }

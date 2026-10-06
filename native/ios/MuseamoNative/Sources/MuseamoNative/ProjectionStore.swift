@@ -105,6 +105,7 @@ extension LibraryStore {
                 "purged":try db.run("SELECT revision_id FROM purged").map { $0["revision_id"]! },"retired":try db.run("SELECT id FROM retired WHERE kind='thought'").map { $0["id"]! }]
             guard try SyncCore.evaluate(request)["eligible"] as? Bool == true else { continue }
             let payload = try object(proof,"payload")
+            try setMetadata("cleanup.erasure", "1")
             try setMetadata("erased:\(token)",encode(position))
             for id in try strings(payload,"revisionIds") {
                 try db.run("INSERT OR IGNORE INTO purged VALUES(?)",[id]); try db.run("DELETE FROM recovery WHERE id=?",[id])
@@ -123,6 +124,7 @@ extension LibraryStore {
     func clearRecovery(_ only: String?) throws {
         let rows = try db.run("SELECT * FROM recovery" + (only == nil ? "" : " WHERE id=?"), only.map { [$0] } ?? [])
         var privateRows: [[String:Any]] = []
+        if !rows.isEmpty { try setMetadata("cleanup.erasure", "1") }
         for row in rows {
             let id = row["id"] as! String
             if id.hasPrefix("shared:") {
@@ -133,7 +135,7 @@ extension LibraryStore {
             } else { privateRows.append(row) }
         }
         if try metadata("group") != nil, !privateRows.isEmpty {
-            let entities = try privateRows.filter { ($0["kind"] as? String) == "thought" && (try entry($0["entity_id"] as! String)) == nil }.map { $0["entity_id"]! }
+            let entities = try privateRows.filter { try ($0["kind"] as? String) == "thought" && entry($0["entity_id"] as! String) == nil }.map { $0["entity_id"]! }
             try recordLocal("purge",uid(),["revisionIds":privateRows.map { $0["id"]! },"entityIds":entities])
         } else { for row in privateRows { try db.run("DELETE FROM recovery WHERE id=?",[row["id"]!]) } }
     }

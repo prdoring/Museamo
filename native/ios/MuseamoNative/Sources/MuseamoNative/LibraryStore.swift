@@ -7,6 +7,7 @@ public final class LibraryStore {
     let null = NSNull()
     private static let schemaVersion: Int64 = 2
     public let directory: URL
+    let migrationSnapshot: URL
     var projecting = false
     var sharingProjection = false
     var identityReader: (() throws -> [String: Any])?
@@ -15,8 +16,10 @@ public final class LibraryStore {
 
     public init(databaseURL: URL) throws {
         directory = databaseURL.deletingLastPathComponent()
+        migrationSnapshot = databaseURL.appendingPathExtension("before-connected-v2")
         db = try SQLite(url: databaseURL)
         try migrate(snapshotURL: databaseURL.appendingPathExtension("before-connected-v2"))
+        try finishErasure()
     }
 
     func migrate(snapshotURL: URL) throws {
@@ -78,8 +81,19 @@ public final class LibraryStore {
                 ["id": row["id"]!, "kind": row["kind"]!, "entityId": row["entity_id"]!, "createdAt": row["created_at"]!, "payload": try decode(row["payload"])] as [String: Any]
             }]
         default:
-            return try db.transaction { try mutate(method, input) }
+            let result = try db.transaction { try mutate(method, input) }
+            try finishErasure()
+            return result
         }
+    }
+
+    /// Physical cleanup follows the durable proof transaction and is retryable after a crash.
+    func finishErasure() throws {
+        guard try metadata("cleanup.erasure") != nil else { return }
+        for url in [migrationSnapshot, migrationSnapshot.appendingPathExtension("tmp")] where FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        guard (try db.run("PRAGMA wal_checkpoint(TRUNCATE)").first?["busy"] as? Int64 ?? 1) == 0 else { throw LibraryError("Permanent clearing is saved; storage cleanup is waiting for a database reader. Reopen Museamo to finish.") }
+        try collectMedia()
+        try db.run("DELETE FROM metadata WHERE key='cleanup.erasure'")
     }
 
     func mutate(_ method: String, _ input: [String: Any]) throws -> [String: Any] {

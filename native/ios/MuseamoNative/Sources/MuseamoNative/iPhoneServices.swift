@@ -12,9 +12,42 @@ public enum InvitationImage {
     public static func png(_ payload: String) throws -> String {
         guard payload.utf8.count <= 4096, let filter = CIFilter(name: "CIQRCodeGenerator") else { throw LibraryError("Invitation cannot be displayed.") }
         filter.setValue(Data(payload.utf8), forKey: "inputMessage"); filter.setValue("M", forKey: "inputCorrectionLevel")
-        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)),
+        guard let code = filter.outputImage else { throw LibraryError("Invitation cannot be displayed.") }
+        let quiet = code.extent.insetBy(dx: -4, dy: -4)
+        let output = code.composited(over: CIImage(color: CIColor.white).cropped(to: quiet)).transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        guard
               let pixels = CIContext().createCGImage(output, from: output.extent), let bytes = UIImage(cgImage: pixels).pngData() else { throw LibraryError("Invitation cannot be displayed.") }
         return "data:image/png;base64," + bytes.base64EncodedString()
+    }
+}
+
+public struct NativeMediaPreview {
+    public let url: URL?
+    public let thumbnail: URL?
+    public let availability: String
+}
+extension LibraryStore {
+    public func previewMedia(_ id: String) throws -> NativeMediaPreview {
+        guard let original = try originalURL(id), let metadata = try record("media", key: "id", id: id) else { return NativeMediaPreview(url: nil, thumbnail: nil, availability: "pending") }
+        let folder = directory.appendingPathComponent("previews", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // Capacitor chooses Content-Type from the URL extension; originals have opaque IDs.
+        let suffix = UTType(mimeType: metadata["mimeType"] as? String ?? "")?.preferredFilenameExtension ?? "bin"
+        let display = folder.appendingPathComponent(id).appendingPathExtension(suffix)
+        if !FileManager.default.fileExists(atPath: display.path) { try FileManager.default.linkItem(at: original, to: display) }
+        let thumbnail = folder.appendingPathComponent(id + "-thumbnail.jpg")
+        let image: CGImage?
+        if metadata["kind"] as? String == "video" {
+            let asset = AVURLAsset(url: display)
+            guard asset.isPlayable else { return NativeMediaPreview(url: nil, thumbnail: nil, availability: "unsupported") }
+            let generator = AVAssetImageGenerator(asset: asset); generator.appliesPreferredTrackTransform = true; generator.maximumSize = CGSize(width: 1280, height: 1280)
+            image = try? generator.copyCGImage(at: .zero, actualTime: nil)
+        } else {
+            image = CGImageSourceCreateWithURL(display as CFURL, nil).flatMap { CGImageSourceCreateThumbnailAtIndex($0, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 1280, kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary) }
+            guard image != nil else { return NativeMediaPreview(url: nil, thumbnail: nil, availability: "unsupported") }
+        }
+        if !FileManager.default.fileExists(atPath: thumbnail.path), let image, let bytes = UIImage(cgImage: image).jpegData(compressionQuality: 0.85) { try? bytes.write(to: thumbnail, options: .atomic) }
+        return NativeMediaPreview(url: display, thumbnail: FileManager.default.fileExists(atPath: thumbnail.path) ? thumbnail : nil, availability: "available")
     }
 }
 

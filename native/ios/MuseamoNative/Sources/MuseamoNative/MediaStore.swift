@@ -92,7 +92,7 @@ extension LibraryStore {
     }
     func readMedia(_ input: [String:Any],shared: Bool) throws -> [String:Any] {
         let id = try string(input,"id"), offset = try timestamp(input,"offset")
-        guard try referencedMedia(local:false)[id] != nil, (!shared || (try scopedMedia(string(input,"scope"))).contains(id)), let url = try originalURL(id) else { throw LibraryError("Original is not referenced by this saved collection.") }
+        guard try referencedMedia(local:false)[id] != nil, try (!shared || scopedMedia(string(input,"scope")).contains(id)), let url = try originalURL(id) else { throw LibraryError("Original is not referenced by this saved collection.") }
         let metadata = try record("media",key:"id",id:id)!, size = try timestamp(metadata,"byteSize")
         guard offset <= size else { throw LibraryError("Invalid original offset.") }
         let file = try FileHandle(forReadingFrom:url); defer { try? file.close() }; try file.seek(toOffset:UInt64(offset))
@@ -103,7 +103,7 @@ extension LibraryStore {
     func writeMedia(_ input: [String:Any],shared: Bool) throws -> [String:Any] {
         let id = try string(input,"id"), size = try timestamp(input,"size"), offset = try timestamp(input,"offset"), metadata = try object(input,"metadata")
         guard metadata["id"] as? String == id, metadata["checksum"] as? String == input["checksum"] as? String, try timestamp(metadata,"byteSize") == size,
-              try referencedMedia(local:false)[id] != nil, (!shared || (try scopedMedia(string(input,"scope"))).contains(id)) else { throw LibraryError("Original is not in this saved collection.") }
+              try referencedMedia(local:false)[id] != nil, try (!shared || scopedMedia(string(input,"scope")).contains(id)) else { throw LibraryError("Original is not in this saved collection.") }
         try registerMedia(metadata)
         if try originalURL(id) != nil { return ["offset":size,"complete":true] }
         let bytes = try SyncCore.bytes(string(input,"bytes",allowEmpty:true)), staging = try mediaURL(id,staged:true)
@@ -126,6 +126,8 @@ extension LibraryStore {
             let id = row["id"] as! String
             guard references[id] == nil, !mediaPins.contains(id) else { continue }
             for staged in [false,true] { let url = try mediaURL(id,staged:staged); if FileManager.default.fileExists(atPath:url.path) { try FileManager.default.removeItem(at:url) } }
+            let previews = directory.appendingPathComponent("previews", isDirectory: true)
+            if FileManager.default.fileExists(atPath: previews.path) { for url in try FileManager.default.contentsOfDirectory(at: previews, includingPropertiesForKeys: nil) where url.lastPathComponent.hasPrefix(id + ".") || url.lastPathComponent == id + "-thumbnail.jpg" { try FileManager.default.removeItem(at: url) } }
             try db.run("DELETE FROM media WHERE id=?",[id])
         }
     }

@@ -21,7 +21,8 @@ export function buildAppleCore({ platform = process.platform, run = spawnSync } 
   execute('rustup', ['target', 'add', ...appleTargets]);
   for (const target of appleTargets) execute('cargo', ['build', '--locked', '-p', 'museamo-sync-core', '--features', 'ffi', '--release', '--target', target], { ...process.env, IPHONEOS_DEPLOYMENT_TARGET: '16.4', MACOSX_DEPLOYMENT_TARGET: '13.0' });
   const library = target => path.join(root, 'target', target, 'release', 'libmuseamo_sync_core.a');
-  const sim = path.join(staging, 'simulator.a'), mac = path.join(staging, 'macos.a');
+  for (const folder of ['simulator', 'macos']) mkdirSync(path.join(staging, folder), { recursive: true });
+  const sim = path.join(staging, 'simulator', 'libmuseamo_sync_core.a'), mac = path.join(staging, 'macos', 'libmuseamo_sync_core.a');
   execute('lipo', ['-create', library(appleTargets[1]), library(appleTargets[2]), '-output', sim]);
   execute('lipo', ['-create', library(appleTargets[3]), library(appleTargets[4]), '-output', mac]);
   const output = path.join(staging, 'MuseamoSyncCore.xcframework');

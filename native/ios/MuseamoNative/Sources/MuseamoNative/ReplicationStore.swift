@@ -1,7 +1,7 @@
 import Foundation
 
 extension LibraryStore {
-    public func hasNetworkEnrollment() throws -> Bool { try metadata("group") != nil }
+    public func hasNetworkEnrollment() throws -> Bool { try metadata("group") != nil || metadataObject("coordinator")["groupId"] is String }
     func metadata(_ key: String) throws -> String? { try db.run("SELECT value FROM metadata WHERE key = ?", [key]).first?["value"] as? String }
     func setMetadata(_ key: String, _ value: String) throws { try db.run("INSERT INTO metadata(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", [key, value]) }
     func metadataObject(_ key: String) throws -> [String: Any] { try metadata(key).map { try decode($0) } ?? [:] }
@@ -97,7 +97,7 @@ extension LibraryStore {
         case "syncEnrollmentTags": return ["tags": try tags().filter { try sharingMetadata(string($0, "id")) == nil }]
         case "syncCoalesceTags": try coalesceTags(input); return [:]
         case "syncExport": return try exportChanges(input)
-        case "syncApply": return try applyChanges(input)
+        case "syncApply": let result = try applyChanges(input); try finishErasure(); return result
         case "syncReceipts": return ["receipts": try receipts(), "stagedReceipts": try receipts(staged: true)]
         case "syncHeader": return ["hash": try operation(string(input, "origin"), timestamp(input, "sequence")).map { try SyncCore.hash(object($0, "header")) } ?? null as Any]
         case "syncSharingRequired": return ["required": try sharingBindings().values.contains { ($0["detached"] as? Bool) != true }]
@@ -127,7 +127,7 @@ extension LibraryStore {
                 }
                 guard required != nil else { throw LibraryError("Cleared history lacks an applied erasure proof.") }
             }
-            let extra = try JSONSerialization.data(withJSONObject: value).count + (try required.map { included[try revisionID($0)] == nil ? JSONSerialization.data(withJSONObject: $0).count : 0 } ?? 0)
+            let extra = try JSONSerialization.data(withJSONObject: value).count + (try required.map { included[try revisionID($0)] == nil ? try JSONSerialization.data(withJSONObject: $0).count : 0 } ?? 0)
             if bytes + extra > 25 * 1024 * 1024 { guard !result.isEmpty else { throw LibraryError("Saved version exceeds the sync capacity.") }; more = true; break }
             if let required { included[try revisionID(required)] = required }
             bytes += extra; result.append(value)

@@ -302,11 +302,13 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let id = call.getString("id") else { call.reject("Choose an original."); return }
         repositoryQueue.async {
             do {
-                let local = try self.store().originalURL(id)
+                let preview = try self.store().previewMedia(id)
                 DispatchQueue.main.async {
-                    guard let local else { call.resolve(["url": "", "availability": "pending"]); return }
+                    guard let local = preview.url else { call.resolve(["url": "", "availability": preview.availability]); return }
                     guard let url = self.bridge?.portablePath(fromLocalURL: local) else { call.reject("Original preview could not be opened."); return }
-                    call.resolve(["url": url.absoluteString, "availability": "available"])
+                    var result = ["url": url.absoluteString, "availability": preview.availability]
+                    if let thumbnail = preview.thumbnail, let mapped = self.bridge?.portablePath(fromLocalURL: thumbnail) { result["thumbnailUrl"] = mapped.absoluteString }
+                    call.resolve(result)
                 }
             } catch { DispatchQueue.main.async { call.reject(error.localizedDescription, "MEDIA_ERROR", error) } }
         }
