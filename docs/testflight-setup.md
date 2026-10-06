@@ -143,7 +143,7 @@ The upload calls Apple's `altool` through Xcode. [Apple's upload instructions](h
 
 1. Install Apple's **TestFlight** app from the iPhone App Store if you haven't already.
 2. In **App Store Connect → Museamo → TestFlight**, add beta test information describing this initial text-library build.
-3. If the build says **Missing Compliance**, open it and complete Apple's encryption questionnaire for the actual app. This workflow leaves that declaration for you; revisit it when iOS sync or other cryptography is added.
+3. For the initial `0.4.0 (1.1.0)` iPhone build, **Missing Compliance** can be resolved by opening the build, choosing **None of the algorithms mentioned above**, and saving. The current iOS target links Capacitor and native SQLite, includes no app-implemented encryption library, and does not include the Rust encrypted sync core. Future builds declare `ITSAppUsesNonExemptEncryption` as the Boolean `false` in `Info.plist`; this covers no encryption or only exempt OS encryption. Reassess this declaration before adding encrypted iOS sync/storage or other cryptography. [Apple's encryption documentation table](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption) and [Info.plist key](https://developer.apple.com/documentation/bundleresources/information-property-list/itsappusesnonexemptencryption).
 4. Under **Internal Testing**, click **+** to create a group named **My devices**.
 5. Add yourself as an internal tester. As the Account Holder, your App Store Connect user is eligible; use the email associated with that user.
 6. Add the processed build to the group and send the invitation if prompted.
