@@ -16,10 +16,18 @@ jobs:
           cache: npm
       - run: xcodebuild -version
       - run: npm ci
+      - run: npm run test:ios:distribution
       - name: Test native iOS persistence and platform contracts
         run: npm run test:ios
       - name: Build the iOS simulator app
         run: npm run ios:build
+      - name: Check the unsigned iPhone release archive
+        run: >-
+          xcodebuild -project ios/App/App.xcodeproj -scheme App
+          -configuration Release -destination 'generic/platform=iOS'
+          -archivePath "$RUNNER_TEMP/Museamo-validation.xcarchive"
+          -derivedDataPath "$RUNNER_TEMP/Museamo-validation-derived"
+          CODE_SIGNING_ALLOWED=NO archive
   build:
     runs-on: ubuntu-latest
     steps:
