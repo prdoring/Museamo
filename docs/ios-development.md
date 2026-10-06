@@ -35,7 +35,7 @@ npm run test:ios
 npm run test:ios:ui
 ```
 
-Swift tests use temporary databases and injected in-memory signing identities, including real Swift callbacks behind Rust listeners. They cover migration rollback/snapshots, enrollment, signed/causal journals, duplicate delivery, private sharing fields and original transfer/retention. Tests never rely on the runner's Keychain. The existing UI persistence smoke test exercises the real React editor and SQLite across relaunch. Hardware still must verify camera permissions, WKWebView video seeking, Bonjour/local-network permissions and suspension.
+Swift tests use temporary databases and injected in-memory signing identities, including real Swift callbacks behind Rust listeners. They cover migration rollback/snapshots, enrollment, signed/causal journals, duplicate delivery, private sharing fields and original transfer/retention. Tests never rely on the runner's Keychain. CI also runs the UI persistence smoke test through the real React editor and SQLite across relaunch, with result bundles retained for seven days. Hardware still must verify camera permissions, WKWebView video seeking, Bonjour/local-network permissions and suspension.
 
 ## Native boundaries and lifetime
 

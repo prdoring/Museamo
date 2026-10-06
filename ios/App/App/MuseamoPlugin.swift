@@ -238,7 +238,11 @@ public final class MuseamoPlugin: CAPPlugin, CAPBridgedPlugin {
         runtimeQueue.async { [weak self] in
             guard let self else { return }
             do {
-                var result = try self.ensureRuntime().command(method, input)
+                var result: [String: Any]
+                if method == "getTagShareState", try !self.repositoryQueue.sync(execute: { try self.store().hasNetworkEnrollment() }) {
+                    // Reading a private tag's editor must not prompt for Local Network.
+                    result = ["collectionId": NSNull()]
+                } else { result = try self.ensureRuntime().command(method, input) }
                 if method == "getSyncState" {
                     result["discoveryAvailable"] = self.discoveryAvailable; result["discoveryError"] = self.discoveryError ?? NSNull() as Any
                 }

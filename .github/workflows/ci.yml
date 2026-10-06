@@ -106,6 +106,17 @@ jobs:
       - name: Verify branding in the compiled iPhone app
         if: needs.changes.outputs.ios_package == 'true'
         run: node scripts/generate-ios-assets.mjs --verify-app "$RUNNER_TEMP/Museamo-validation.xcarchive/Products/Applications/App.app"
+      - name: Verify native iPhone capture survives relaunch
+        if: needs.changes.outputs.ios_package == 'true'
+        timeout-minutes: 12
+        run: npm run test:ios:ui
+      - uses: actions/upload-artifact@v4
+        if: always() && needs.changes.outputs.ios_package == 'true'
+        with:
+          name: ios-persistence-ui-results
+          path: ios/DerivedData/Logs/Test/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
 
   android:
     needs: changes
