@@ -83,6 +83,66 @@ test('manual validation defaults to no upload and trusted reusable release calls
   assert.doesNotMatch(workflow, /path:.*(p12|p8|mobileprovision|keychain)/);
 });
 
+// Execute the workflow's actual preflight, with the GitHub API replaced by fixtures.
+// This checks the signing gate without accessing credentials or launching a build.
+function candidateGate() {
+  const workflow = readFileSync(new URL('../.github/workflows/testflight.yml', import.meta.url), 'utf8');
+  const body = workflow.match(/Require successful checks for the exact candidate commit[\s\S]*?script: \|\r?\n([\s\S]*?)      - uses: actions\/checkout@v4/)[1];
+  return new (Object.getPrototypeOf(async function () {}).constructor)('context', 'github', 'core', body.replace(/^            /gm, ''));
+}
+function checkedCandidate() {
+  const context = { eventName: 'workflow_dispatch', ref: 'refs/heads/codex/ios-sharing', sha: 'a'.repeat(40), repo: { owner: 'prdoring', repo: 'Museamo' } };
+  const run = { id: 123, head_sha: context.sha, status: 'completed', conclusion: 'success', event: 'pull_request', repository: { full_name: 'prdoring/Museamo' }, head_repository: { full_name: 'prdoring/Museamo' }, html_url: 'https://github.com/prdoring/Museamo/actions/runs/123' };
+  const jobs = ['tests', 'ios', 'build'].map(name => ({ name, status: 'completed', conclusion: 'success' }));
+  const requests = [];
+  const outputs = [];
+  const summary = { addHeading() { return this; }, addRaw() { return this; }, async write() {} };
+  return { context, run, jobs, requests, outputs, core: { setOutput(...args) { outputs.push(args); }, summary }, github: { rest: { actions: { async listWorkflowRuns(params) { requests.push(params); return { data: { workflow_runs: [run] } }; }, listJobsForWorkflowRun() {} } }, async paginate(method, params) { requests.push(params); return jobs; } } };
+}
+
+test('an explicit iPhone candidate signs only the exact checked own-repository commit', async () => {
+  const fixture = checkedCandidate();
+  await candidateGate()(fixture.context, fixture.github, fixture.core);
+  assert.equal(fixture.requests[0].head_sha, fixture.context.sha);
+  assert.equal(fixture.requests[0].workflow_id, 'ci.yml');
+  assert.equal(fixture.requests[1].run_id, fixture.run.id);
+  assert.deepEqual(fixture.outputs, [['checked-run', 123]]);
+  const workflow = readFileSync(new URL('../.github/workflows/testflight.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /inputs\.candidate && startsWith\(github\.ref, 'refs\/heads\/codex\/'\)/);
+  assert.match(workflow, /actions: read/);
+  assert.ok(workflow.indexOf('Require successful checks') < workflow.indexOf('actions/checkout@v4'));
+  assert.ok(workflow.indexOf('Require successful checks') < workflow.indexOf('secrets.IOS_DISTRIBUTION_P12_BASE64', workflow.indexOf('    steps:')));
+});
+
+test('candidate signing rejects forks, stale commits, failed checks and nonmanual events', async () => {
+  const mutations = [
+    f => { f.run.head_sha = 'b'.repeat(40); },
+    f => { f.run.head_repository.full_name = 'someone/Museamo'; },
+    f => { f.run.repository.full_name = 'someone/Museamo'; },
+    f => { f.run.status = 'in_progress'; },
+    f => { f.run.conclusion = 'failure'; },
+    f => { f.run.event = 'pull_request_target'; },
+    f => { f.context.eventName = 'pull_request'; },
+    f => { f.context.ref = 'refs/heads/main'; },
+    f => { f.context.sha = '../not-a-commit'; },
+  ];
+  for (const mutate of mutations) {
+    const fixture = checkedCandidate(); mutate(fixture);
+    await assert.rejects(candidateGate()(fixture.context, fixture.github, fixture.core), /Candidates require|needs successful/);
+    assert.deepEqual(fixture.outputs, []);
+  }
+});
+
+test('candidate signing requires iPhone and aggregate checks to actually run successfully', async () => {
+  for (const name of ['tests', 'ios', 'build']) {
+    for (const conclusion of ['skipped', 'cancelled', 'failure']) {
+      const fixture = checkedCandidate(); fixture.jobs.find(job => job.name === name).conclusion = conclusion;
+      await assert.rejects(candidateGate()(fixture.context, fixture.github, fixture.core), /skipped checks are insufficient/);
+      assert.deepEqual(fixture.outputs, []);
+    }
+  }
+});
+
 test('iPhone identity uses the checked-out release commit rather than workflow_run default SHA', () => {
   const commit = 'a'.repeat(40);
   const env = { MUSEAMO_RELEASE_VERSION: '0.4.1', MUSEAMO_RELEASE_COMMIT: commit, GITHUB_SHA: 'b'.repeat(40) };

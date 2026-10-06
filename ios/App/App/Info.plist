@@ -2,10 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <!-- Current iOS target uses only OS-provided services, with no bundled encryption
-       implementation. Reassess before adding encrypted sync/storage or crypto libraries. -->
+  <!-- Bundled Rust uses Noise, X25519, ChaChaPoly and SHA-256. Export compliance
+       must be reviewed in App Store Connect; do not claim OS-only encryption. -->
   <key>ITSAppUsesNonExemptEncryption</key>
-  <false/>
+  <true/>
+  <key>NSCameraUsageDescription</key>
+  <string>Scan a hashtag invitation when you choose to join a shared hashtag.</string>
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>Add your current location to a thought when you tap the location pin.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Share selected hashtags and sync with your linked devices on the same local network.</string>
+  <key>NSBonjourServices</key>
+  <array><string>_museamo._tcp</string><string>_museamo-share._tcp</string></array>
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>

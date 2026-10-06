@@ -15,11 +15,12 @@ export function platformCapabilities(platform: Platform) {
     nativeCapture: platform === "android",
     widgets: platform === "android",
     automaticLocation: platform === "android" || platform === "preview",
-    location: platform !== "ios",
-    media: platform !== "ios",
+    manualLocation: platform === "android" || platform === "ios" || platform === "preview",
+    location: true,
+    media: true,
     backups: platform !== "ios",
-    sync: platform === "android" || platform === "desktop",
-    sharing: platform !== "ios",
+    sync: platform !== "preview",
+    sharing: true,
     recovery: true,
   };
 }

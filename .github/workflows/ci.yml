@@ -64,6 +64,7 @@ jobs:
       - run: npm test
       - run: npm run test:release
       - run: node --test scripts/build-sync-android.test.mjs
+      - run: node --test scripts/build-sync-ios.test.mjs
       - run: npm run test:ios:distribution
       - run: npm run test:ios:assets
 
@@ -81,6 +82,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: xcodebuild -version
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the native Rust XCFramework
+        run: npm run ios:sync-core
       - run: npm ci
         if: needs.changes.outputs.ios_package == 'true'
       - name: Test native iOS persistence and platform contracts
@@ -99,6 +106,17 @@ jobs:
       - name: Verify branding in the compiled iPhone app
         if: needs.changes.outputs.ios_package == 'true'
         run: node scripts/generate-ios-assets.mjs --verify-app "$RUNNER_TEMP/Museamo-validation.xcarchive/Products/Applications/App.app"
+      - name: Verify native iPhone capture survives relaunch
+        if: needs.changes.outputs.ios_package == 'true'
+        timeout-minutes: 12
+        run: npm run test:ios:ui
+      - uses: actions/upload-artifact@v4
+        if: always() && needs.changes.outputs.ios_package == 'true'
+        with:
+          name: ios-persistence-ui-results
+          path: ios/DerivedData/Logs/Test/*.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
 
   android:
     needs: changes
@@ -126,7 +144,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;30.0.14904198"
       - run: npm ci
-      - run: cargo test -p museamo-sync-core --locked
+      - run: cargo test -p museamo-sync-core --features ffi --locked
       - run: npm run android:sync-core -- --release
       - run: npm run android:sync
       - run: chmod +x android/gradlew

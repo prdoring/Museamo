@@ -144,9 +144,9 @@ export function Settings({
         <h2>About & storage</h2>
         <p>Museamo · a place for your thoughts.</p>
         <p className="muted">
-          {capabilities.media ? "Original attachments stay in your local library and sync directly with devices you link. Linked media loads from its host when visible. No account or cloud sync. Removing app data deletes your library; export a backup first." : "Your thoughts, tags, and drafts are saved on this device. Removing app data deletes your library."}
+          {capabilities.media ? <>Original attachments stay in your local library and sync directly with devices you link. Linked media loads from its host when visible. No account or cloud sync. Removing app data deletes your library{capabilities.backups ? "; export a backup first." : "."}</> : "Your thoughts, tags, and drafts are saved on this device. Removing app data deletes your library."}
         </p>
-        {!capabilities.backups && <p className="muted">Photos, locations, backups, linked devices, and shared hashtags are not available in this iOS build yet.</p>}
+        {!capabilities.backups && <p className="muted">iPhone supports photos, videos, manual location capture, shared hashtags, and linked devices while the app is open. Backup export and import are not available yet. Keep this installation to preserve your local library.</p>}
       </section>
       {isPreview && (
         <section>

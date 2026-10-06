@@ -1,4 +1,20 @@
-# iOS offline foundation verification
+# iOS verification
+
+## Connected iPhone candidate — October 6, 2026
+
+Implementation is in [draft PR #13](https://github.com/prdoring/Museamo/pull/13). **All automated checks passed** on tested commit `a62a102688b1045f09307c16f444ee170a579abb` in [Checks run 37534986721](https://github.com/prdoring/Museamo/actions/runs/37534986721). Later documentation-only commits do not change the tested implementation. Required PR-head results are attached to the [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
+
+Local checks passed: **151 frontend tests**, **51 Rust tests**, TypeScript, the production web build, 40 Apple framework-builder/change-classification tests, and 11 signing/distribution tests. Desktop passed 39 tests in the sandbox; the remaining DPAPI test passed under the normal Windows account. Existing Vite artwork/chunk warnings remain.
+
+The [Mac validation job](https://github.com/prdoring/Museamo/actions/runs/37534986721/job/112513908047), tested October 6 on commit `a62a102688b1045f09307c16f444ee170a579abb`, passed all five Rust static-library targets, XCFramework packaging, **21 Swift tests**, the iPhone simulator build, the unsigned iPhone Release archive, compiled branding verification, and the native UI persistence test. The real Rust-listener/Swift-repository test covered invitation preview/join, private fields/history exclusion, same-name tags, original transfer/checksum, saved location, checklist changes, one-shared-tag validation, matching-code/personal-library consent, linked shared tags and private copies after leave/stop. Suspension-generation fencing, orphan-original cleanup, erasure reaching existing/fresh peers, and enrollment-response retries also passed. Android build/unit/lint, Android instrumentation, frontend checks, and Windows/macOS/Linux desktop tests and package builds all passed in this run.
+
+The UI test ran on **iPhone 16 Pro / iOS 18.5 simulator**, with Xcode 26.3 and SDK 26.2. It saved a thought and an unfinished draft through the actual React editor and Capacitor/SQLite bridge, terminated/relaunched, verified both persisted, and checked that photo/video and manual-location controls exist. `ios-persistence-ui-results` contains the result bundle and synthetic-content screenshots in the linked run, retained for seven days. This is simulator evidence; iOS 16.4 hardware and connected-feature device acceptance remain unverified.
+
+No connected-feature TestFlight build number or physical-device result has been recorded. The prior signed/uploaded text-only build does not validate these changes. Use the [candidate acceptance record](ios-sharing-acceptance.md) to record the exact commit/build/devices and every required scenario. Backups and automatic iPhone location capture remain deferred; see [privacy/encryption inventory](ios-privacy-inventory.md).
+
+The PR is unmerged. A manually requested iPhone-only branch candidate requires successful own-repository Checks for its exact commit, including frontend, iPhone and aggregate jobs, before signing credentials are used. Upload defaults off. This permits signing validation without the broader Windows/Android publication performed by the mainline release workflow. See [candidate build instructions](testflight-setup.md#6-build-then-upload). A successful unsigned archive does not confirm signing, Apple processing, or physical acceptance.
+
+## Historical offline foundation — October 4, 2026
 
 Verified locally October 4, 2026 with Node 22, Xcode 26.6, iOS SDK/simulator 26.5, and Rust 1.99.0. The app targets iPhone on iOS 16.4 or newer. Signed installation, physical hardware, and the oldest supported iOS version remain unverified.
 

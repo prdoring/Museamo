@@ -91,9 +91,9 @@ final class LibraryStoreTests: XCTestCase {
 
     func testCursorOrderingFiltersAndSearchTreatWildcardsLiterally() throws {
         let store = try LibraryStore(databaseURL: databaseURL)
-        try store.execute(method: "saveTag", input: ["id": "list", "name": "List", "type": "checklist"])
-        let a = try save(store, text: "ALPHA café 100%", tagIDs: ["list"])
-        let b = try save(store, text: "Beta", tagIDs: ["list"])
+        try store.execute(method: "saveTag", input: ["id": "00000000-0000-0000-0000-000000000001", "name": "List", "type": "checklist"])
+        let a = try save(store, text: "ALPHA café 100%", tagIDs: ["00000000-0000-0000-0000-000000000001"])
+        let b = try save(store, text: "Beta", tagIDs: ["00000000-0000-0000-0000-000000000001"])
         let c = try save(store, text: "Outside")
         let aUpdated = try entry(store, a)["updatedAt"] as? NSNumber
         let bUpdated = try entry(store, b)["updatedAt"] as? NSNumber
@@ -107,13 +107,13 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertEqual(try rows(store, query: ["search": "CAFÉ"]).first?["id"] as? String, a)
         XCTAssertEqual(try rows(store, query: ["search": "%"]).count, 1)
         XCTAssertEqual(try rows(store, query: ["located": true]).count, 0)
-        let firstPage = try store.execute(method: "queryEntries", input: ["tagId": "list", "order": "checklist", "limit": 1])
+        let firstPage = try store.execute(method: "queryEntries", input: ["tagId": "00000000-0000-0000-0000-000000000001", "order": "checklist", "limit": 1])
         XCTAssertEqual(firstPage["hasMore"] as? Bool, true)
         let first = try XCTUnwrap((firstPage["entries"] as? [[String: Any]])?.first)
         XCTAssertEqual(first["id"] as? String, a)
-        let second = try rows(store, query: ["tagId": "list", "order": "checklist", "limit": 1, "beforeTime": first["createdAt"]!, "beforeId": a, "beforeCompleted": false])
+        let second = try rows(store, query: ["tagId": "00000000-0000-0000-0000-000000000001", "order": "checklist", "limit": 1, "beforeTime": first["createdAt"]!, "beforeId": a, "beforeCompleted": false])
         XCTAssertEqual(second.first?["id"] as? String, b)
-        XCTAssertThrowsError(try store.execute(method: "queryEntries", input: ["tagId": "list", "order": "checklist", "beforeTime": first["createdAt"]!]))
+        XCTAssertThrowsError(try store.execute(method: "queryEntries", input: ["tagId": "00000000-0000-0000-0000-000000000001", "order": "checklist", "beforeTime": first["createdAt"]!]))
         XCTAssertThrowsError(try store.execute(method: "queryEntries", input: ["tagId": "unknown", "order": "checklist"]))
         var gathered: [String] = []
         var query: [String: Any] = ["limit": 1]
@@ -150,13 +150,13 @@ final class LibraryStoreTests: XCTestCase {
 
     func testTagDeletionCleansDraftProfileEntryAndDoesNotRecreateInlineTag() throws {
         let store = try LibraryStore(databaseURL: databaseURL)
-        try store.execute(method: "saveTag", input: ["id": "tag", "name": "Café", "type": "checklist"])
+        try store.execute(method: "saveTag", input: ["id": "00000000-0000-0000-0000-000000000002", "name": "Café", "type": "checklist"])
         XCTAssertThrowsError(try store.execute(method: "saveTag", input: ["name": "Cafe\u{301}"]))
-        let id = try save(store, text: "#Café", tagIDs: ["tag"])
-        try store.execute(method: "saveProfile", input: ["profile": ["id": "profile", "label": "Capture", "mode": "picker", "tagIds": ["tag"], "selectedTagId": "tag"]])
+        let id = try save(store, text: "#Café", tagIDs: ["00000000-0000-0000-0000-000000000002"])
+        try store.execute(method: "saveProfile", input: ["profile": ["id": "profile", "label": "Capture", "mode": "picker", "tagIds": ["00000000-0000-0000-0000-000000000002"], "selectedTagId": "00000000-0000-0000-0000-000000000002"]])
         let profileDraft = try XCTUnwrap(store.execute(method: "getDraft", input: ["profileId": "profile"])["draft"] as? [String: Any])
-        XCTAssertEqual(profileDraft["tagIds"] as? [String], ["tag"])
-        try store.execute(method: "deleteTag", input: ["id": "tag"])
+        XCTAssertEqual(profileDraft["tagIds"] as? [String], ["00000000-0000-0000-0000-000000000002"])
+        try store.execute(method: "deleteTag", input: ["id": "00000000-0000-0000-0000-000000000002"])
         XCTAssertEqual(try entry(store, id)["tagIds"] as? [String], [])
         let updated = try XCTUnwrap(store.execute(method: "getDraft", input: ["profileId": "profile"])["draft"] as? [String: Any])
         XCTAssertEqual(updated["tagIds"] as? [String], [])
@@ -168,9 +168,9 @@ final class LibraryStoreTests: XCTestCase {
 
     func testOptionalProfileFieldsRemainJSONCompatibleAcrossReopen() throws {
         let store = try LibraryStore(databaseURL: databaseURL)
-        try store.execute(method: "saveTag", input: ["id": "tag", "name": "Movies"])
-        for (id, selected) in [("selected", "tag" as Any), ("missing", "unknown" as Any), ("empty", NSNull() as Any)] {
-            try store.execute(method: "saveProfile", input: ["profile": ["id": id, "label": id, "mode": "picker", "tagIds": ["tag"], "selectedTagId": selected]])
+        try store.execute(method: "saveTag", input: ["id": "00000000-0000-0000-0000-000000000002", "name": "Movies"])
+        for (id, selected) in [("selected", "00000000-0000-0000-0000-000000000002" as Any), ("missing", "unknown" as Any), ("empty", NSNull() as Any)] {
+            try store.execute(method: "saveProfile", input: ["profile": ["id": id, "label": id, "mode": "picker", "tagIds": ["00000000-0000-0000-0000-000000000002"], "selectedTagId": selected]])
             let value = try draft(store)
             XCTAssertTrue(value["profileId"] is NSNull)
             let profileDraft = try XCTUnwrap(store.execute(method: "getDraft", input: ["profileId": id])["draft"] as? [String: Any])
@@ -181,7 +181,7 @@ final class LibraryStoreTests: XCTestCase {
         let library = try reopened.execute(method: "library")
         XCTAssertTrue(JSONSerialization.isValidJSONObject(library))
         let profiles = try XCTUnwrap(library["profiles"] as? [[String: Any]])
-        XCTAssertEqual(profiles.first { $0["id"] as? String == "selected" }?["selectedTagId"] as? String, "tag")
+        XCTAssertEqual(profiles.first { $0["id"] as? String == "selected" }?["selectedTagId"] as? String, "00000000-0000-0000-0000-000000000002")
         for id in ["missing", "empty"] {
             XCTAssertTrue(profiles.first { $0["id"] as? String == id }?["selectedTagId"] is NSNull)
         }
@@ -222,11 +222,11 @@ final class LibraryStoreTests: XCTestCase {
         XCTAssertNotNil(try save(store, text: "Still usable"))
         let futureURL = directory.appendingPathComponent("future.sqlite3")
         var future: SQLite? = try SQLite(url: futureURL)
-        try future!.run("PRAGMA user_version = 2")
+        try future!.run("PRAGMA user_version = 3")
         future = nil
         XCTAssertThrowsError(try LibraryStore(databaseURL: futureURL))
         let check = try SQLite(url: futureURL)
-        XCTAssertEqual(try check.run("PRAGMA user_version").first?["user_version"] as? Int64, 2)
+        XCTAssertEqual(try check.run("PRAGMA user_version").first?["user_version"] as? Int64, 3)
     }
 
     func testEmbeddedNullAndUnicodeArePreservedAndSearchable() throws {

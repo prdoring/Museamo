@@ -173,9 +173,13 @@ impl Coordinator {
             let mut next = state.persistent.clone();
             next.group_id = Some(unique()?);
             next.controls.push(self.make_control(&next, "genesis", serde_json::to_value(&self.identity).map_err(|e| e.to_string())?)?);
-            self.platform_call("syncEnroll", json!({"groupId": next.group_id}))?;
             self.save(&next)?;
             state.persistent = next;
+        }
+        // Persist the signed root before baseline preparation. A crash or storage failure
+        // retries enrollment with the same group instead of stranding an enrolled journal.
+        if initialize {
+            self.platform_call("syncEnroll", json!({"groupId": state.persistent.group_id}))?;
         }
         Ok(json!({"group":state.persistent.group_id,"controls":state.persistent.controls}))
     }
@@ -303,7 +307,7 @@ impl Coordinator {
             }
             owner.started.store(false, Ordering::SeqCst);
         });
-        if !address.ip().is_loopback() {
+        if !address.ip().is_loopback() && !cfg!(target_os = "ios") {
             if let Err(error) = self.start_discovery(address.port()) {
                 self.state
                     .lock()
@@ -526,7 +530,15 @@ impl Coordinator {
                 self.local_data_changed()?;
                 self.public_state()
             }
-            // Android NSD can supply hints without changing trust.
+            // Native discovery supplies hints without changing trust.
+            "externalDiscoveryStatus" => {
+                if !cfg!(target_os = "ios") {
+                    return Err("External discovery status is only available on iOS".into());
+                }
+                self.state.lock().map_err(|_| "Discovery unavailable")?.runtime.discovery_error =
+                    input["error"].as_str().map(str::to_owned);
+                self.public_state()
+            }
             "discoveryHint" => {
                 let id = text(&input, "deviceId")?;
                 let address = text(&input, "address")?;
@@ -1568,6 +1580,32 @@ mod tests {
         assert!(parse_address("8.8.8.8:443").is_err());
         assert!(parse_address("192.168.1.10:45821").is_ok());
         assert!(parse_address("[::1]:45821").is_ok());
+    }
+    #[test]
+    fn sharing_enrollment_retries_the_persisted_root_after_a_lost_commit_response() {
+        struct InterruptedEnrollment { fake: Arc<Fake>, once: AtomicBool }
+        impl Platform for InterruptedEnrollment {
+            fn call(&self, method: &str, input: Value) -> Result<Value, String> {
+                let response = self.fake.call(method, input)?;
+                if method == "syncEnroll" && self.once.swap(false, Ordering::SeqCst) {
+                    return Err("Enrollment committed before the response was interrupted".into());
+                }
+                Ok(response)
+            }
+        }
+        let fake = Fake::new("enrollment-retry", 7);
+        let platform = Arc::new(InterruptedEnrollment { fake: fake.clone(), once: AtomicBool::new(true) });
+        let original = Coordinator::new(platform.clone()).unwrap();
+        assert!(original.sharing_proof(true).is_err());
+        let persisted: Persistent = serde_json::from_value(fake.db.lock().unwrap().state.clone().unwrap()).unwrap();
+        assert_eq!(persisted.group_id, fake.db.lock().unwrap().group);
+        original.stop();
+        let replacement = Coordinator::new(platform).unwrap();
+        let proof = replacement.sharing_proof(true).unwrap();
+        assert_eq!(proof["group"].as_str(), persisted.group_id.as_deref());
+        assert_eq!(proof["controls"].as_array().unwrap().len(), 1);
+        assert_eq!(fake.db.lock().unwrap().operations.len(), 1);
+        replacement.stop();
     }
     #[test]
     fn discovery_prefers_usable_ipv4_over_scoped_link_local_candidates() {

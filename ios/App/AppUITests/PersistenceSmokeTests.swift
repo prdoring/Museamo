@@ -60,8 +60,8 @@ final class PersistenceSmokeTests: XCTestCase {
         waitForSavedThought(thought)
         openTag(tagName)
         waitForText(draft, in: openComposer())
-        XCTAssertFalse(button("Attach photos/videos").exists)
-        XCTAssertFalse(button("Post location").exists)
+        XCTAssertTrue(button("Attach photos/videos").exists)
+        XCTAssertTrue(button("Post location").exists)
         attachScreenshot("ios-draft")
     }
 

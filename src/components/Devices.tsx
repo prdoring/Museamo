@@ -76,7 +76,7 @@ function AvailableDevices() {
           <form onSubmit={e => { e.preventDefault(); void run(() => bridge.linkDevice({ address: address.trim() })); }}><label>Other device address<input value={address} onChange={e => setAddress(e.target.value)} autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="192.168.1.20:12345" disabled={busy} /></label><button className="secondary" type="submit" disabled={busy || !address.trim()}>Link device</button></form>
         </details>
       </>}
-      <p className="muted">Android background sync may wait for a battery-friendly opportunity. Open both apps and choose Sync now to catch up immediately.</p>
+      <p className="muted">iPhone sync runs while Museamo is open. Android background sync may wait for a battery-friendly opportunity. Open both apps and choose Sync now to catch up immediately.</p>
     </>}
   </section>;
 }
