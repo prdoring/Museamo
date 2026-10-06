@@ -2,7 +2,7 @@
 
 The route is **Windows → GitHub's Mac build machine → Apple TestFlight → your iPhone**. You can do the setup in a Windows browser and terminal; no personal Mac is required. The current app targets iPhone on iOS 16.4 or newer. Start with your own internal testing group.
 
-The `iPhone TestFlight` workflow is manually triggered from `main`. Its upload checkbox defaults to off. Normal pushes and pull requests run checks, including an unsigned iPhone Release archive, and never upload to Apple. A signed package, a successful upload, a processed TestFlight build, and installation on hardware are separate milestones.
+Successful **Checks** runs for pushes to `main` start **Mainline release**, which calls `iPhone TestFlight` with the reserved release commit and version and uploads automatically. Windows and Android publication proceeds independently. Pull requests never upload. You can still manually trigger `iPhone TestFlight` from `main` for validation; its upload checkbox defaults to off. A signed package, a successful upload, a processed TestFlight build, and installation on hardware are separate milestones.
 
 ## 1. Enroll your Apple Account
 
@@ -135,7 +135,7 @@ The workflow must first be reviewed and merged into `main` before it appears in 
 7. Run the workflow again on **main**, this time checking the upload box. This builds a new numbered package, validates it with Apple, and uploads it to App Store Connect.
 8. Wait for Apple processing. A successful GitHub upload is not yet a ready-to-install build. Apple emails the processing result; check **App Store Connect → Museamo → TestFlight → iOS**.
 
-Build versions follow `package.json` (currently `0.4.0`). Build numbers increase with workflow runs and retries, within Apple's component limits. Keep this workflow's run counter when evolving the workflow; don't delete/recreate it or manually upload a higher build number for the same version without coordinating the numbering scheme.
+Automatic build versions follow the tagged release's package.json, starting with `0.4.1`; manual validation follows main's development version. All automatic jobs receive the resolved release commit explicitly, rather than using workflow_run's default SHA. Build numbers increase with the calling workflow's runs and retries, within Apple's component limits. Retry failed jobs in the original Mainline release run to preserve the reserved version. Avoid separate manual uploads of the same version using an unrelated workflow counter.
 
 The upload calls Apple's `altool` through Xcode. [Apple's upload instructions](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)
 
@@ -144,9 +144,9 @@ The upload calls Apple's `altool` through Xcode. [Apple's upload instructions](h
 1. Install Apple's **TestFlight** app from the iPhone App Store if you haven't already.
 2. In **App Store Connect → Museamo → TestFlight**, add beta test information describing this initial text-library build.
 3. For the initial `0.4.0 (1.1.0)` iPhone build, **Missing Compliance** can be resolved by opening the build, choosing **None of the algorithms mentioned above**, and saving. The current iOS target links Capacitor and native SQLite, includes no app-implemented encryption library, and does not include the Rust encrypted sync core. Future builds declare `ITSAppUsesNonExemptEncryption` as the Boolean `false` in `Info.plist`; this covers no encryption or only exempt OS encryption. Reassess this declaration before adding encrypted iOS sync/storage or other cryptography. [Apple's encryption documentation table](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption) and [Info.plist key](https://developer.apple.com/documentation/bundleresources/information-property-list/itsappusesnonexemptencryption).
-4. Under **Internal Testing**, click **+** to create a group named **My devices**.
+4. Under **Internal Testing**, click **+** to create a group named **My devices** and select **Enable automatic distribution** so future processed mainline builds reach the group automatically.
 5. Add yourself as an internal tester. As the Account Holder, your App Store Connect user is eligible; use the email associated with that user.
-6. Add the processed build to the group and send the invitation if prompted.
+6. Confirm the processed build appears in the group (or add the first build manually) and send the invitation if prompted.
 7. Open the invitation on your iPhone, accept it in TestFlight, and tap **Install**.
 8. Open Museamo, save a sample thought, close the app, and reopen it. Confirm the thought remains. Then test an unfinished draft across relaunch.
 
