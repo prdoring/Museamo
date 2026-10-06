@@ -2,11 +2,35 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { buildNumber, validateConfig, validateUploadConfig, validateProfile, exportOptions, decodeSecret, main, validateReleaseIdentity } from './ios-testflight.mjs';
+import { buildNumber, validateConfig, validateUploadConfig, validateProfile, exportOptions, decodeSecret, main, validateReleaseIdentity, requireAppleDeliverySuccess } from './ios-testflight.mjs';
 
 const team = 'ABCDE12345';
 const certificate = Buffer.from('test-only-certificate');
 const sha1 = createHash('sha1').update(certificate).digest('hex');
+
+test('Apple rejection fails delivery even when altool exits zero', () => {
+  const rejected = 'VERIFY FAILED with 1 error\nValidation failed (409) Invalid Export Compliance Code.';
+  for (const operation of ['validate', 'upload']) {
+    for (const result of [
+      { status: 0, stdout: '', stderr: rejected },
+      { status: 0, stdout: 'UPLOAD FAILED with 1 error' },
+      { status: 0, stdout: '' },
+      { status: 1, stdout: 'UPLOAD SUCCEEDED\nVERIFY SUCCEEDED' },
+      { status: 0, stdout: 'UPLOAD SUCCEEDED\nVERIFY SUCCEEDED', stderr: rejected },
+    ]) assert.throws(() => requireAppleDeliverySuccess(result, operation), /did not succeed/);
+  }
+});
+
+test('Apple delivery requires the acknowledgement for the requested operation', () => {
+  for (const stdout of ['VERIFY SUCCEEDED', 'No errors validating archive']) {
+    assert.doesNotThrow(() => requireAppleDeliverySuccess({ status: 0, stdout }, 'validate'));
+    assert.throws(() => requireAppleDeliverySuccess({ status: 0, stdout }, 'upload'));
+  }
+  for (const stderr of ['UPLOAD SUCCEEDED', 'No errors uploading archive']) {
+    assert.doesNotThrow(() => requireAppleDeliverySuccess({ status: 0, stderr }, 'upload'));
+    assert.throws(() => requireAppleDeliverySuccess({ status: 0, stderr }, 'validate'));
+  }
+});
 function profile() { return { UUID: '01234567-89ab-cdef-0123-456789abcdef', TeamIdentifier: [team], ApplicationIdentifierPrefix: ['OLDER12345'], ExpirationDate: '2099-01-01T00:00:00Z', DeveloperCertificates: [certificate.toString('base64')], Entitlements: { 'com.apple.developer.team-identifier': team, 'application-identifier': 'OLDER12345.com.prdoring.museamo', 'get-task-allow': false } }; }
 function config() { return { IOS_TEAM_ID: team, IOS_DISTRIBUTION_P12_BASE64: 'YWJj', IOS_DISTRIBUTION_P12_PASSWORD: 'test password', IOS_PROVISIONING_PROFILE_BASE64: 'YWJj' }; }
 

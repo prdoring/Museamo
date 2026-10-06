@@ -8,7 +8,7 @@ Status: merged implementation candidate, October 6, 2026. All PR automated check
 - Tested implementation commit: `7362a1b455862fb7f0780088856b7667c51b8a12`; [all automated platform checks passed](https://github.com/prdoring/Museamo/actions/runs/37538150162). Merged as `d5f8bf7e27d3b653098aa54ca27a82e6b0f2aef3`.
 - Automated iPhone results: [21 Swift tests, simulator build, unsigned iPhone archive and native capture/relaunch UI test passed](https://github.com/prdoring/Museamo/actions/runs/37538150162/job/112524883437), October 6, 2026. UI device: iPhone 16 Pro / iOS 18.5 simulator. The run's `ios-persistence-ui-results` artifact contains the result bundle and screenshots, retained for seven days.
 - Physical tested commit: pending signed candidate and owner record.
-- TestFlight version/build: pending signed candidate.
+- Signed candidate: **0.4.3 (1.6.0)**, release commit `caa9535aaf99e2d6879179ba6210ff6093208a8a`, [release run 37545848705](https://github.com/prdoring/Museamo/actions/runs/37545848705). Signing/export and credential cleanup passed. **Apple rejected validation and upload with 409 Invalid Export Compliance Code; this is not an available TestFlight build.** The run incorrectly reported success because altool returned zero despite the rejection. Complete the owner encryption review in App Store Connect → Museamo → App Information → App Encryption Documentation before retrying with the appropriate declaration/code.
 - iPhone model/iOS: pending owner record.
 - Android model/app version: pending owner record.
 - Windows app version: pending owner record.
