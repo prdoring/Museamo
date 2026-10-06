@@ -69,6 +69,18 @@ test('credential mutations cannot run on the Windows development computer', () =
   assert.throws(() => main('cleanup', {}), /GitHub-hosted Mac/);
 });
 
+test('archive provisioning applies only to the App release target, never package resource bundles', () => {
+  const builder = readFileSync(new URL('./ios-testflight.mjs', import.meta.url), 'utf8');
+  const project = readFileSync(new URL('../ios/App/App.xcodeproj/project.pbxproj', import.meta.url), 'utf8');
+  const archiveCommand = builder.match(/run\('xcodebuild', \[.*'archive'\]/)[0];
+  assert.match(archiveCommand, /MUSEAMO_APP_PROVISIONING_PROFILE=\$\{uuid\}/);
+  assert.doesNotMatch(archiveCommand, /[`'"]PROVISIONING_PROFILE(?:_SPECIFIER)?=/);
+  const appRelease = project.match(/504EC3181FED79650016851F \/\* Release \*\/ = \{([\s\S]*?)\n\t\t\};/)[1];
+  assert.match(appRelease, /PRODUCT_BUNDLE_IDENTIFIER = com\.prdoring\.museamo;/);
+  assert.match(appRelease, /PROVISIONING_PROFILE_SPECIFIER = "\$\(MUSEAMO_APP_PROVISIONING_PROFILE\)";/);
+  assert.equal(project.match(/PROVISIONING_PROFILE_SPECIFIER/g)?.length, 1);
+});
+
 test('manual validation defaults to no upload and trusted reusable release calls are supported', () => {
   const workflow = readFileSync(new URL('../.github/workflows/testflight.yml', import.meta.url), 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
