@@ -124,4 +124,6 @@ Persistence errors must remain visible; real apps must never fall back to previe
 
 ## CI and releases
 
-GitHub Actions defines frontend, Rust, Android unit/lint, emulator, iOS Swift/simulator build, and Windows/macOS/Linux desktop checks. The new iOS job is configured but its hosted result remains unverified. Desktop validation bundles are retained as short-lived workflow artifacts, not published releases. Downloadable releases are assembled and published explicitly from local builds; see [the release guide](releases.md).
+GitHub Actions selects frontend, Rust, Android unit/lint, emulator, iOS Swift/simulator/archive, and Windows/macOS/Linux desktop checks from the changed files. Documentation uses lightweight checks; known test/tooling changes do not release; isolated platform changes avoid unrelated native builds. Feature branches run through PR checks, and newer PR updates cancel older runs. Manual `Checks` dispatch still runs full validation. See [CI scope and required checks](ci.md).
+
+Desktop validation bundles are retained as short-lived workflow artifacts. Successful mainline validation of app or bundle changes starts automatic Windows/Android publication and independent TestFlight upload; documentation-, test-, and known tooling-only merges skip that work. Local build/publication commands remain available; see [the release guide](releases.md).
