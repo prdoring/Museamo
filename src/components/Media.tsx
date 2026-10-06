@@ -70,7 +70,7 @@ function MediaItem({ attachment, link, open }: { attachment?: Attachment; link?:
     {visible && resolved?.availability === "pending" && <p className="media-error" role="status">Original waiting to sync. Connect a linked device with this attachment.</p>}
     {visible && resolved?.availability === "unsupported" && <p className="media-error" role="status">The original is saved, but this device cannot preview its format.</p>}
     </div>
-    {error && <p className="media-error" role="status">{attachment ? "Could not preview this original. It stays in your library and backups." : "Media unavailable. Check your connection or try a supported file format."} <button onClick={() => { setError(false); setResolved(undefined); }}>Retry</button></p>}
+    {error && <p className="media-error" role="status">{attachment ? `Could not preview this original. It stays in your library${capabilities.backups ? " and backups" : ""}.` : "Media unavailable. Check your connection or try a supported file format."} <button onClick={() => { setError(false); setResolved(undefined); }}>Retry</button></p>}
     {link && <button className="text-button" onClick={() => void bridge.openExternal({ url: link.source }).catch(() => setError(true))}>Open original link</button>}
   </div>;
 }

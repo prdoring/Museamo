@@ -688,7 +688,7 @@ export function Editor({
             {capabilities.media && <span className="composer-media-action" ref={setMediaToolbar} />}
             <button className="composer-icon" type="button" aria-label="Text formatting" aria-expanded={showFormatting} disabled={busy || importing} onMouseDown={e => e.preventDefault()} onClick={() => { setShowFormatting(!showFormatting); setShowTags(false); setShowLocation(false); }}>Aa</button>
             <button className="composer-icon" type="button" aria-label="Add tag" aria-expanded={showTags} disabled={busy || importing} onClick={() => { setShowTags(!showTags); setShowFormatting(false); setShowLocation(false); }}><Hash size={22} /></button>
-            {capabilities.location && (capabilities.automaticLocation || location) && <button className={"composer-icon location-toggle" + (location ? " has-location" : "")} type="button" aria-label={locating ? "Finding location" : "Post location"} aria-expanded={showLocation} disabled={busy || importing || locating} onClick={() => {
+            {capabilities.location && (capabilities.manualLocation || location) && <button className={"composer-icon location-toggle" + (location ? " has-location" : "")} type="button" aria-label={locating ? "Finding location" : "Post location"} aria-expanded={showLocation} disabled={busy || importing || locating} onClick={() => {
               setShowFormatting(false); setShowTags(false);
               if (location) setShowLocation(!showLocation); else void requestLocation();
             }}>{locating ? <LoaderCircle className="location-spinner" size={22} /> : <MapPin size={22} />}</button>}

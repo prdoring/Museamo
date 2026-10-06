@@ -173,9 +173,13 @@ impl Coordinator {
             let mut next = state.persistent.clone();
             next.group_id = Some(unique()?);
             next.controls.push(self.make_control(&next, "genesis", serde_json::to_value(&self.identity).map_err(|e| e.to_string())?)?);
-            self.platform_call("syncEnroll", json!({"groupId": next.group_id}))?;
             self.save(&next)?;
             state.persistent = next;
+        }
+        // Persist the signed root before baseline preparation. A crash or storage failure
+        // retries enrollment with the same group instead of stranding an enrolled journal.
+        if initialize {
+            self.platform_call("syncEnroll", json!({"groupId": state.persistent.group_id}))?;
         }
         Ok(json!({"group":state.persistent.group_id,"controls":state.persistent.controls}))
     }
@@ -303,7 +307,7 @@ impl Coordinator {
             }
             owner.started.store(false, Ordering::SeqCst);
         });
-        if !address.ip().is_loopback() {
+        if !address.ip().is_loopback() && !cfg!(target_os = "ios") {
             if let Err(error) = self.start_discovery(address.port()) {
                 self.state
                     .lock()
@@ -526,7 +530,15 @@ impl Coordinator {
                 self.local_data_changed()?;
                 self.public_state()
             }
-            // Android NSD can supply hints without changing trust.
+            // Native discovery supplies hints without changing trust.
+            "externalDiscoveryStatus" => {
+                if !cfg!(target_os = "ios") {
+                    return Err("External discovery status is only available on iOS".into());
+                }
+                self.state.lock().map_err(|_| "Discovery unavailable")?.runtime.discovery_error =
+                    input["error"].as_str().map(str::to_owned);
+                self.public_state()
+            }
             "discoveryHint" => {
                 let id = text(&input, "deviceId")?;
                 let address = text(&input, "address")?;

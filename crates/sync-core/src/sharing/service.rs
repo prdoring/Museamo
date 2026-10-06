@@ -173,7 +173,7 @@ impl ShareService {
             }
         });
         // A loopback listener cannot accept connections on advertised LAN addresses.
-        if !address.ip().is_loopback() {
+        if !address.ip().is_loopback() && !cfg!(target_os = "ios") {
             if let Err(error) = self.discovery(address.port()) {
                 self.error(format!("Shared-list discovery unavailable: {error}"));
             }

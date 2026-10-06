@@ -44,12 +44,12 @@ export function classifyChanges(files, { manual = false } = {}) {
     } else if (file.startsWith('desktop/test-fixtures/') || /^desktop\/src\/(.*\/)?[^/]*tests\.rs$/.test(file)) {
       selectDesktop();
     } else if (/^crates\/.*\/(tests\/|[^/]*tests\.rs$)/.test(file)) {
-      select('android');
+      select('android', 'ios');
       selectDesktop();
     } else if (file.startsWith('ios/App/AppUITests/')) {
       select('ios', 'ios_package');
     } else if (file.startsWith('ios/') || file.startsWith('native/ios/')
-      || ['scripts/generate-ios-assets.mjs', 'scripts/branding-art.mjs'].includes(file)) {
+      || ['scripts/generate-ios-assets.mjs', 'scripts/branding-art.mjs', 'scripts/build-sync-ios.mjs'].includes(file)) {
       select('ios', 'ios_package', 'release');
     } else if (file.startsWith('android/') || /^scripts\/build-sync-android\.(mjs|ps1)$/.test(file)) {
       select('android', 'release');
@@ -67,7 +67,7 @@ export function classifyChanges(files, { manual = false } = {}) {
       select('desktop_package', 'release');
     } else if (file.startsWith('crates/') || ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml'].includes(file)) {
       selectDesktop();
-      select('android', 'desktop_package', 'release');
+      select('android', 'ios', 'ios_package', 'desktop_package', 'release');
     } else {
       // Shared UI, dependencies, bundled assets, and new/unclassified paths retain full coverage.
       Object.assign(scope, fullScope(true));

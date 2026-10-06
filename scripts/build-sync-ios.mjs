@@ -1,0 +1,36 @@
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, copyFileSync, writeFileSync, rmSync, existsSync, renameSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const appleTargets = ['aarch64-apple-ios', 'aarch64-apple-ios-sim', 'x86_64-apple-ios', 'aarch64-apple-darwin', 'x86_64-apple-darwin'];
+export function buildAppleCore({ platform = process.platform, run = spawnSync } = {}) {
+  if (platform !== 'darwin') throw new Error('Apple sync frameworks require macOS and Xcode. Use the GitHub iPhone build workflow from Windows.');
+  const execute = (cmd, args, env = process.env) => {
+    const result = run(cmd, args, { cwd: root, env, stdio: 'inherit' });
+    if (result.error || result.status !== 0) throw new Error(`${cmd} failed building the Apple sync framework (${result.status ?? result.error?.message}).`);
+  };
+  const staging = path.join(root, '.tools', 'sync-ios');
+  const destination = path.join(root, 'native', 'ios', 'MuseamoNative', 'Frameworks', 'MuseamoSyncCore.xcframework');
+  mkdirSync(staging, { recursive: true });
+  const headers = path.join(staging, 'headers');
+  mkdirSync(headers, { recursive: true });
+  copyFileSync(path.join(root, 'crates', 'sync-core', 'include', 'museamo_sync.h'), path.join(headers, 'museamo_sync.h'));
+  writeFileSync(path.join(headers, 'module.modulemap'), 'module MuseamoSyncCore { header "museamo_sync.h" export * }\n');
+  execute('rustup', ['target', 'add', ...appleTargets]);
+  for (const target of appleTargets) execute('cargo', ['build', '--locked', '-p', 'museamo-sync-core', '--features', 'ffi', '--release', '--target', target], { ...process.env, IPHONEOS_DEPLOYMENT_TARGET: '16.4', MACOSX_DEPLOYMENT_TARGET: '13.0' });
+  const library = target => path.join(root, 'target', target, 'release', 'libmuseamo_sync_core.a');
+  const sim = path.join(staging, 'simulator.a'), mac = path.join(staging, 'macos.a');
+  execute('lipo', ['-create', library(appleTargets[1]), library(appleTargets[2]), '-output', sim]);
+  execute('lipo', ['-create', library(appleTargets[3]), library(appleTargets[4]), '-output', mac]);
+  const output = path.join(staging, 'MuseamoSyncCore.xcframework');
+  if (existsSync(output)) rmSync(output, { recursive: true });
+  execute('xcodebuild', ['-create-xcframework', '-library', library(appleTargets[0]), '-headers', headers, '-library', sim, '-headers', headers, '-library', mac, '-headers', headers, '-output', output]);
+  mkdirSync(path.dirname(destination), { recursive: true });
+  if (existsSync(destination)) rmSync(destination, { recursive: true });
+  renameSync(output, destination);
+}
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try { buildAppleCore(); } catch (error) { console.error(error.message); process.exitCode = 1; }
+}

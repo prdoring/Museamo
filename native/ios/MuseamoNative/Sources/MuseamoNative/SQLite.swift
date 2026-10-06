@@ -5,7 +5,7 @@ import CSQLite
 public struct LibraryError: LocalizedError {
     public let message: String
     public var errorDescription: String? { message }
-    init(_ message: String) { self.message = message }
+    public init(_ message: String) { self.message = message }
 }
 
 /// Access is confined to the owning LibraryStore's serial caller.
@@ -27,6 +27,7 @@ final class SQLite {
             try run("PRAGMA foreign_keys = ON")
             try run("PRAGMA journal_mode = WAL")
             try run("PRAGMA synchronous = FULL")
+            try run("PRAGMA secure_delete = ON")
         } catch {
             sqlite3_close(handle)
             handle = nil
@@ -35,6 +36,19 @@ final class SQLite {
     }
 
     deinit { sqlite3_close(handle) }
+
+    /// SQLite's online backup includes committed WAL pages; copying the main file does not.
+    func snapshot(to url: URL) throws {
+        guard !FileManager.default.fileExists(atPath: url.path) else { return }
+        let temporary = url.appendingPathExtension("tmp")
+        var destination: OpaquePointer?
+        guard sqlite3_open(temporary.path, &destination) == SQLITE_OK else { sqlite3_close(destination); throw failure() }
+        defer { sqlite3_close(destination) }
+        guard let backup = sqlite3_backup_init(destination, "main", handle, "main") else { throw failure() }
+        let step = sqlite3_backup_step(backup, -1), finish = sqlite3_backup_finish(backup)
+        guard step == SQLITE_DONE, finish == SQLITE_OK else { try? FileManager.default.removeItem(at: temporary); throw failure() }
+        try FileManager.default.moveItem(at: temporary, to: url)
+    }
 
     private func failure() -> LibraryError {
         LibraryError("Library storage failed: \(handle.map { String(cString: sqlite3_errmsg($0)) } ?? "cannot open database")")

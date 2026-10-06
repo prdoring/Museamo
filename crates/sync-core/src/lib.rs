@@ -9,9 +9,12 @@ pub mod sharing;
 pub mod tags;
 pub mod transport;
 pub mod wire;
+pub mod validation;
 pub use coordinator::{Coordinator, Platform};
 #[cfg(feature = "android")]
 mod android;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_RECORD_BYTES: usize = 60 * 1024;

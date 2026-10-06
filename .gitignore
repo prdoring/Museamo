@@ -43,3 +43,4 @@ artifacts-*.png
 *.ipa
 **/.build/
 **/.swiftpm/
+native/ios/MuseamoNative/Frameworks/

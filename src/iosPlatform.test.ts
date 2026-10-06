@@ -34,8 +34,8 @@ describe("platform boundaries", () => {
   });
   it("exposes only implemented iOS capabilities while retaining existing hosts", async () => {
     const { platformCapabilities } = await import("./platform");
-    expect(platformCapabilities("ios")).toEqual({ nativeCapture: false, widgets: false, automaticLocation: false, location: false, media: false, backups: false, sync: false, sharing: false, recovery: true });
-    expect(platformCapabilities("android")).toEqual({ nativeCapture: true, widgets: true, automaticLocation: true, location: true, media: true, backups: true, sync: true, sharing: true, recovery: true });
+    expect(platformCapabilities("ios")).toEqual({ nativeCapture: false, widgets: false, automaticLocation: false, manualLocation: true, location: true, media: true, backups: false, sync: true, sharing: true, recovery: true });
+    expect(platformCapabilities("android")).toEqual({ nativeCapture: true, widgets: true, automaticLocation: true, manualLocation: true, location: true, media: true, backups: true, sync: true, sharing: true, recovery: true });
     expect(platformCapabilities("desktop")).toMatchObject({ nativeCapture: false, widgets: false, automaticLocation: false, location: true, media: true, backups: true, sync: true, sharing: true });
     expect(platformCapabilities("preview")).toMatchObject({ sync: false, sharing: true, media: true, automaticLocation: true });
   });
