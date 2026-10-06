@@ -40,7 +40,7 @@
     "release:setup": "node scripts/release.mjs setup",
     "release:signing": "node scripts/release.mjs signing",
     "release:signing:backup": "node scripts/release.mjs signing-backup",
-    "test:release": "node --test scripts/release.test.mjs scripts/release-prepare.test.mjs scripts/android-ci-signing.test.mjs",
+    "test:release": "node --test scripts/dependency-lock.test.mjs scripts/release.test.mjs scripts/release-prepare.test.mjs scripts/android-ci-signing.test.mjs",
     "release:configure-ci": "node scripts/release-configure-ci.mjs"
   },
   "dependencies": {
