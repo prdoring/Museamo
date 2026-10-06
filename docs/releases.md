@@ -1,6 +1,8 @@
 # Automatic mainline releases and local builds
 
-Every successful **Checks** run for a push to `main` starts **Mainline release**. Pull requests, other branches, and failed checks do not release. GitHub-hosted runners build Windows x64 and signed Android downloads, verify both, and publish a stable GitHub Release. A separate Mac job uploads the same version to internal TestFlight; an Apple failure does not block Windows and Android publication.
+Successful **Checks** runs for pushes to `main` start **Mainline release**, which first verifies the originating run's change-scope record. Documentation-, test-, and known tooling-only changes skip version reservation, release builds, publication, and TestFlight. App or bundle changes remain eligible for automatic delivery. Pull requests, other branches, manual check runs, and failed checks do not release. See [CI scope](ci.md) for the file policy and required checks.
+
+For eligible app changes, GitHub-hosted runners build Windows x64 and signed Android downloads, verify both, and publish a stable GitHub Release. A separate Mac job uploads the same version to internal TestFlight; an Apple failure does not block Windows and Android publication.
 
 ## Automatic versions and recovery
 

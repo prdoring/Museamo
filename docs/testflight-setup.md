@@ -2,7 +2,7 @@
 
 The route is **Windows → GitHub's Mac build machine → Apple TestFlight → your iPhone**. You can do the setup in a Windows browser and terminal; no personal Mac is required. The current app targets iPhone on iOS 16.4 or newer. Start with your own internal testing group.
 
-Successful **Checks** runs for pushes to `main` start **Mainline release**, which calls `iPhone TestFlight` with the reserved release commit and version and uploads automatically. Windows and Android publication proceeds independently. Pull requests never upload. You can still manually trigger `iPhone TestFlight` from `main` for validation; its upload checkbox defaults to off. A signed package, a successful upload, a processed TestFlight build, and installation on hardware are separate milestones.
+Successful **Checks** runs for app or bundle changes pushed to `main` start **Mainline release**, which calls `iPhone TestFlight` with the reserved release commit and version and uploads automatically. Documentation-, test-, and known tooling-only changes skip release builds and uploads; see [CI scope](ci.md). Windows and Android publication proceeds independently. Pull requests never upload. You can still manually trigger `iPhone TestFlight` from `main` for validation; its upload checkbox defaults to off. A signed package, a successful upload, a processed TestFlight build, and installation on hardware are separate milestones.
 
 ## 1. Enroll your Apple Account
 
