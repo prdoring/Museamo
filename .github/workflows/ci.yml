@@ -17,6 +17,7 @@ jobs:
       - run: xcodebuild -version
       - run: npm ci
       - run: npm run test:ios:distribution
+      - run: npm run test:ios:assets
       - name: Test native iOS persistence and platform contracts
         run: npm run test:ios
       - name: Build the iOS simulator app
@@ -28,6 +29,8 @@ jobs:
           -archivePath "$RUNNER_TEMP/Museamo-validation.xcarchive"
           -derivedDataPath "$RUNNER_TEMP/Museamo-validation-derived"
           CODE_SIGNING_ALLOWED=NO archive
+      - name: Verify branding in the compiled iPhone app
+        run: node scripts/generate-ios-assets.mjs --verify-app "$RUNNER_TEMP/Museamo-validation.xcarchive/Products/Applications/App.app"
   build:
     runs-on: ubuntu-latest
     steps:

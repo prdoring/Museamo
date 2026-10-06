@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { buildNumber, validateConfig, validateUploadConfig, validateProfile, exportOptions, decodeSecret, main } from './ios-testflight.mjs';
+import { buildNumber, validateConfig, validateUploadConfig, validateProfile, exportOptions, decodeSecret, main, validateReleaseIdentity } from './ios-testflight.mjs';
 
 const team = 'ABCDE12345';
 const certificate = Buffer.from('test-only-certificate');
@@ -69,13 +69,24 @@ test('credential mutations cannot run on the Windows development computer', () =
   assert.throws(() => main('cleanup', {}), /GitHub-hosted Mac/);
 });
 
-test('distribution is manual and defaults to exporting without upload', () => {
+test('manual validation defaults to no upload and trusted reusable release calls are supported', () => {
   const workflow = readFileSync(new URL('../.github/workflows/testflight.yml', import.meta.url), 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
   assert.doesNotMatch(workflow, /^\s+(push|pull_request):/m);
   assert.match(workflow, /default: false/);
-  assert.match(workflow, /if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /workflow_call:/);
+  assert.match(workflow, /github\.ref == 'refs\/heads\/main'/);
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(workflow, /github\.event\.workflow_run\.head_repository\.full_name == github\.repository/);
   assert.match(workflow, /if: inputs\.upload/);
   assert.match(workflow, /if: always\(\)/);
   assert.doesNotMatch(workflow, /path:.*(p12|p8|mobileprovision|keychain)/);
+});
+
+test('iPhone identity uses the checked-out release commit rather than workflow_run default SHA', () => {
+  const commit = 'a'.repeat(40);
+  const env = { MUSEAMO_RELEASE_VERSION: '0.4.1', MUSEAMO_RELEASE_COMMIT: commit, GITHUB_SHA: 'b'.repeat(40) };
+  assert.deepEqual(validateReleaseIdentity(env, '0.4.1', commit), { version: '0.4.1', commit });
+  assert.throws(() => validateReleaseIdentity(env, '0.4.0', commit), /reserved release identity/);
+  assert.throws(() => validateReleaseIdentity(env, '0.4.1', 'b'.repeat(40)), /reserved release identity/);
 });

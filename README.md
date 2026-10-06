@@ -25,7 +25,7 @@ Your library lives on your devices. Capture works offline, and your linked Andro
 
 ## Install
 
-Open [GitHub Releases](https://github.com/prdoring/Museamo/releases) and choose a version with downloadable assets. Early test builds may be under **Pre-releases**. The first release will appear there after it has been built locally and published.
+Open [GitHub Releases](https://github.com/prdoring/Museamo/releases) and choose a version with downloadable assets. Successful mainline checks automatically publish Windows and Android releases once signing is configured. Early test builds may be under **Pre-releases**.
 
 | Your device | Download | Requirements |
 | --- | --- | --- |
@@ -151,7 +151,7 @@ cargo test --workspace
 
 **Build and publication are separate commands.** `npm run release` checks the source without publishing. Build each desktop package on its native host; Android builds also work on macOS and Linux. Verify each platform, assemble matching artifacts, then explicitly publish the reviewed assembly. Windows can save the Android signing key with `npm run release:signing`; Unix hosts use the original key's portable backup and environment variables. [Release setup, signing backup, and commands](docs/releases.md)
 
-GitHub Actions validates changes and retains test reports and temporary desktop build artifacts. It does not publish GitHub releases. A separate manually triggered iPhone workflow can upload to TestFlight when its upload checkbox is selected and Apple signing credentials have been configured.
+GitHub Actions validates changes and retains test reports and temporary desktop build artifacts. Successful checks for pushes to main automatically reserve a patch version, build and verify Windows and signed Android downloads, and publish a stable GitHub Release. The same release version is independently uploaded to internal TestFlight. Local release commands remain available; see [automatic release configuration and recovery](docs/releases.md). The iPhone workflow also retains manual validation with upload off by default.
 
 [Contributing](CONTRIBUTING.md) · [Architecture](docs/architecture.md) · [Design system](DESIGN.md) · [Device checklist](docs/device-checklist.md) · [Verification records](docs/verification.md)
 

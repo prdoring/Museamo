@@ -1,0 +1,270 @@
+name: Mainline release
+
+on:
+  workflow_run:
+    workflows: [Checks]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: museamo-mainline-release
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.repository.full_name == github.repository &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.reserve.outputs.version }}
+      tag: ${{ steps.reserve.outputs.tag }}
+      commit: ${{ steps.reserve.outputs.commit }}
+      duplicate: ${{ steps.reserve.outputs.duplicate }}
+      published: ${{ steps.status.outputs.published }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Reserve an immutable release version
+        id: reserve
+        run: node scripts/release-prepare.mjs
+      - name: Check publication status
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.reserve.outputs.tag }}
+          ORIGINAL_RUN: ${{ steps.reserve.outputs.runId }}
+          DUPLICATE: ${{ steps.reserve.outputs.duplicate }}
+        run: |
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          node --input-type=module <<'JS'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const releases = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/releases.json')).flat();
+          const published = releases.some(release => release.tag_name === process.env.RELEASE_TAG && !release.draft);
+          appendFileSync(process.env.GITHUB_OUTPUT, `published=${published}\n`);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Release **${process.env.RELEASE_TAG}** reserved. GitHub published: **${published}**.\n\n`);
+          if (process.env.DUPLICATE === 'true') appendFileSync(process.env.GITHUB_STEP_SUMMARY, `This source already belongs to [release run ${process.env.ORIGINAL_RUN}](https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.ORIGINAL_RUN}). Retry failed jobs there; this duplicate run will not build or publish.\n`);
+          JS
+
+  windows:
+    needs: prepare
+    if: needs.prepare.outputs.duplicate == 'false' && needs.prepare.outputs.published == 'false'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Locate the original verified artifacts on retry
+        id: cached
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_NAME: release-${{ needs.prepare.outputs.tag }}-windows
+        with:
+          script: |
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, { ...context.repo, run_id: context.runId });
+            const artifact = artifacts.find(item => item.name === process.env.ARTIFACT_NAME);
+            if (artifact?.expired) throw new Error('Original release artifacts expired. Do not rebuild a partially uploaded draft.');
+            core.setOutput('id', artifact?.id || '');
+      - uses: actions/download-artifact@v4
+        if: steps.cached.outputs.id != ''
+        with:
+          artifact-ids: ${{ steps.cached.outputs.id }}
+          path: releases/${{ needs.prepare.outputs.version }}/windows
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        if: steps.cached.outputs.id == ''
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.cached.outputs.id == ''
+        with:
+          toolchain: 1.99.0
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        if: steps.cached.outputs.id == ''
+      - name: Build and verify Windows downloads
+        if: steps.cached.outputs.id == ''
+        run: |
+          npm run release:build -- --platform windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run release:verify -- --platform windows
+      - uses: actions/upload-artifact@v4
+        if: steps.cached.outputs.id == ''
+        with:
+          name: release-${{ needs.prepare.outputs.tag }}-windows
+          path: releases/${{ needs.prepare.outputs.version }}/windows/
+          if-no-files-found: error
+          retention-days: 30
+
+  android:
+    needs: prepare
+    if: needs.prepare.outputs.duplicate == 'false' && needs.prepare.outputs.published == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Locate the original verified artifacts on retry
+        id: cached
+        uses: actions/github-script@v7
+        env:
+          ARTIFACT_NAME: release-${{ needs.prepare.outputs.tag }}-android
+        with:
+          script: |
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, { ...context.repo, run_id: context.runId });
+            const artifact = artifacts.find(item => item.name === process.env.ARTIFACT_NAME);
+            if (artifact?.expired) throw new Error('Original release artifacts expired. Do not rebuild a partially uploaded draft.');
+            core.setOutput('id', artifact?.id || '');
+      - uses: actions/download-artifact@v4
+        if: steps.cached.outputs.id != ''
+        with:
+          artifact-ids: ${{ steps.cached.outputs.id }}
+          path: releases/${{ needs.prepare.outputs.version }}/android
+          merge-multiple: true
+      - name: Restore the existing Android signing identity
+        if: steps.cached.outputs.id == ''
+        env:
+          MUSEAMO_KEYSTORE_BASE64: ${{ secrets.MUSEAMO_KEYSTORE_BASE64 }}
+          MUSEAMO_KEY_ALIAS: ${{ secrets.MUSEAMO_KEY_ALIAS }}
+          MUSEAMO_STORE_PASSWORD: ${{ secrets.MUSEAMO_STORE_PASSWORD }}
+          MUSEAMO_KEY_PASSWORD: ${{ secrets.MUSEAMO_KEY_PASSWORD }}
+          MUSEAMO_ANDROID_CERT_SHA256: ${{ vars.MUSEAMO_ANDROID_CERT_SHA256 }}
+        run: node scripts/android-ci-signing.mjs restore
+      - uses: actions/setup-node@v4
+        if: steps.cached.outputs.id == ''
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        if: steps.cached.outputs.id == ''
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        if: steps.cached.outputs.id == ''
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.cached.outputs.id == ''
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.cached.outputs.id == ''
+        with:
+          toolchain: 1.99.0
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        if: steps.cached.outputs.id == ''
+      - name: Build and verify signed Android downloads
+        if: steps.cached.outputs.id == ''
+        env:
+          MUSEAMO_KEY_ALIAS: ${{ secrets.MUSEAMO_KEY_ALIAS }}
+          MUSEAMO_STORE_PASSWORD: ${{ secrets.MUSEAMO_STORE_PASSWORD }}
+          MUSEAMO_KEY_PASSWORD: ${{ secrets.MUSEAMO_KEY_PASSWORD }}
+          MUSEAMO_ANDROID_CERT_SHA256: ${{ vars.MUSEAMO_ANDROID_CERT_SHA256 }}
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;30.0.14904198"
+          git config core.filemode false
+          chmod +x android/gradlew
+          npm run release:build -- --platform android
+          npm run release:verify -- --platform android
+      - uses: actions/upload-artifact@v4
+        if: steps.cached.outputs.id == ''
+        with:
+          name: release-${{ needs.prepare.outputs.tag }}-android
+          path: releases/${{ needs.prepare.outputs.version }}/android/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove the temporary Android keystore
+        if: always()
+        run: node scripts/android-ci-signing.mjs cleanup
+
+  publish:
+    needs: [prepare, windows, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.prepare.outputs.tag }}-windows
+          path: releases/${{ needs.prepare.outputs.version }}/windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.prepare.outputs.tag }}-android
+          path: releases/${{ needs.prepare.outputs.version }}/android
+      - name: Assemble and publish verified downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm run release:assemble -- --platforms android,windows --directory "$RUNNER_TEMP/assembly"
+          npm run release:verify -- --directory "$RUNNER_TEMP/assembly"
+          npm run release:publish -- --ci --directory "$RUNNER_TEMP/assembly"
+
+  testflight:
+    needs: prepare
+    if: needs.prepare.outputs.duplicate == 'false'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/testflight.yml
+    with:
+      upload: true
+      release_commit: ${{ needs.prepare.outputs.commit }}
+      release_version: ${{ needs.prepare.outputs.version }}
+    secrets:
+      IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+      IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+
+  report:
+    if: always() && needs.prepare.result == 'success'
+    needs: [prepare, windows, android, publish, testflight]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report independent delivery outcomes
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          PUBLISHED: ${{ needs.prepare.outputs.published }}
+          DUPLICATE: ${{ needs.prepare.outputs.duplicate }}
+          WINDOWS: ${{ needs.windows.result }}
+          ANDROID: ${{ needs.android.result }}
+          PUBLICATION: ${{ needs.publish.result }}
+          TESTFLIGHT: ${{ needs.testflight.result }}
+        run: |
+          echo "### $RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo "Windows: $WINDOWS. Android: $ANDROID. GitHub publication: $PUBLICATION (previously published: $PUBLISHED)." >> "$GITHUB_STEP_SUMMARY"
+          echo "TestFlight upload: $TESTFLIGHT. Apple processing and internal group distribution follow upload acceptance." >> "$GITHUB_STEP_SUMMARY"
+          echo "Duplicate source run skipped: $DUPLICATE." >> "$GITHUB_STEP_SUMMARY"

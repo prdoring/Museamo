@@ -35,6 +35,15 @@ export function validateConfig(env) {
   if (env.TESTFLIGHT_UPLOAD === 'true') validateUploadConfig(env);
 }
 
+export function validateReleaseIdentity(env, version, commit) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('Invalid iPhone release version.');
+  if (!/^[a-f\d]{40}$/.test(commit)) throw new Error('Invalid iPhone source commit.');
+  if (env.MUSEAMO_RELEASE_COMMIT || env.MUSEAMO_RELEASE_VERSION) {
+    if (env.MUSEAMO_RELEASE_COMMIT !== commit || env.MUSEAMO_RELEASE_VERSION !== version) throw new Error('iPhone checkout differs from the reserved release identity.');
+  }
+  return { version, commit };
+}
+
 // Apple's build number components are bounded to 4, 2, and 2 digits. Retries
 // advance the final component; new workflow runs advance the earlier ones.
 export function buildNumber(runNumber, attempt) {
@@ -95,6 +104,9 @@ function readPlist(filename) {
 function build(env) {
   validateConfig(env);
   const p = paths(env);
+  const version = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  const commit = run('git', ['rev-parse', 'HEAD']).trim();
+  validateReleaseIdentity(env, version, commit);
   mkdirSync(p.directory, { recursive: true, mode: 0o700 });
   const certificate = path.join(p.directory, 'distribution.p12');
   const profilePath = path.join(p.directory, 'distribution.mobileprovision');
@@ -123,8 +135,6 @@ function build(env) {
   // Record ownership before copying so cleanup can recover a partially failed write.
   writeFileSync(p.receipt, JSON.stringify({ uuid }));
   writeFileSync(installed, readFileSync(profilePath), { flag: 'wx', mode: 0o600 });
-  const version = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version;
-  if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error('package.json must contain a numeric major.minor.patch version.');
   const number = buildNumber(env.GITHUB_RUN_NUMBER, env.GITHUB_RUN_ATTEMPT);
   const archive = path.join(p.directory, 'Museamo.xcarchive');
   const options = path.join(p.directory, 'ExportOptions.plist');
@@ -133,10 +143,11 @@ function build(env) {
   run('xcodebuild', ['-project', 'ios/App/App.xcodeproj', '-scheme', 'App', '-configuration', 'Release', '-destination', 'generic/platform=iOS', '-archivePath', archive, '-derivedDataPath', path.join(p.directory, 'DerivedData'), `DEVELOPMENT_TEAM=${env.IOS_TEAM_ID}`, 'CODE_SIGN_STYLE=Manual', `CODE_SIGN_IDENTITY=${sha1}`, `PROVISIONING_PROFILE_SPECIFIER=${uuid}`, `MARKETING_VERSION=${version}`, `CURRENT_PROJECT_VERSION=${number}`, 'archive'], { visible: true });
   const info = readPlist(path.join(archive, 'Products', 'Applications', 'App.app', 'Info.plist'));
   if (info.CFBundleIdentifier !== bundleId || info.CFBundleVersion !== number || info.CFBundleShortVersionString !== version) throw new Error('Archived app identity or version does not match the requested TestFlight build.');
+  run(process.execPath, ['scripts/generate-ios-assets.mjs', '--verify-app', path.join(archive, 'Products', 'Applications', 'App.app')], { visible: true });
   run('xcodebuild', ['-exportArchive', '-archivePath', archive, '-exportPath', p.exportDir, '-exportOptionsPlist', options], { visible: true });
-  const record = { version, buildNumber: number, bundleId, commit: env.GITHUB_SHA, runId: env.GITHUB_RUN_ID };
+  const record = { version, buildNumber: number, bundleId, commit, runId: env.GITHUB_RUN_ID };
   writeFileSync(path.join(p.directory, 'build-record.json'), JSON.stringify(record, null, 2) + '\n');
-  if (env.GITHUB_STEP_SUMMARY) writeFileSync(env.GITHUB_STEP_SUMMARY, `Museamo **${version} (${number})** was signed and exported for iPhone.\n\nCommit: \`${env.GITHUB_SHA}\`. Upload is a separate step; a signed artifact alone is not a TestFlight installation.\n`, { flag: 'a' });
+  if (env.GITHUB_STEP_SUMMARY) writeFileSync(env.GITHUB_STEP_SUMMARY, `Museamo **${version} (${number})** was signed and exported for iPhone.\n\nCommit: \`${commit}\`. Upload is a separate step; a signed artifact alone is not a TestFlight installation.\n`, { flag: 'a' });
 }
 
 function upload(env) {
@@ -151,7 +162,7 @@ function upload(env) {
   const args = ['-f', path.join(p.exportDir, files[0]), '-t', 'ios', '--apiKey', env.ASC_KEY_ID, '--apiIssuer', env.ASC_ISSUER_ID];
   run('xcrun', ['altool', '--validate-app', ...args], { visible: true, env: childEnv });
   run('xcrun', ['altool', '--upload-app', ...args], { visible: true, env: childEnv });
-  if (env.GITHUB_STEP_SUMMARY) writeFileSync(env.GITHUB_STEP_SUMMARY, '\nApple accepted the upload. Wait for processing in **App Store Connect → Museamo → TestFlight**, then add the build to your internal testing group.\n', { flag: 'a' });
+  if (env.GITHUB_STEP_SUMMARY) writeFileSync(env.GITHUB_STEP_SUMMARY, '\nApple accepted the upload. Processing in **App Store Connect → Museamo → TestFlight** follows; enable automatic distribution on your internal group to deliver processed builds.\n', { flag: 'a' });
 }
 
 function cleanup(env) {

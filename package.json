@@ -14,7 +14,10 @@
     "build": "npm run typecheck && vite build",
     "android:sync": "npm run build && cap sync android",
     "android:open": "cap open android",
-    "ios:sync": "npm run build && cap sync ios",
+    "ios:assets": "node scripts/generate-ios-assets.mjs",
+    "ios:assets:check": "node scripts/generate-ios-assets.mjs --check",
+    "test:ios:assets": "node --test scripts/generate-ios-assets.test.mjs",
+    "ios:sync": "npm run ios:assets && npm run ios:assets:check && npm run build && cap sync ios",
     "ios:open": "cap open ios",
     "ios:build": "npm run ios:sync && xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData CODE_SIGNING_ALLOWED=NO build",
     "ios:launch": "node scripts/run-ios-simulator.mjs",
@@ -37,7 +40,8 @@
     "release:setup": "node scripts/release.mjs setup",
     "release:signing": "node scripts/release.mjs signing",
     "release:signing:backup": "node scripts/release.mjs signing-backup",
-    "test:release": "node --test scripts/release.test.mjs"
+    "test:release": "node --test scripts/dependency-lock.test.mjs scripts/release.test.mjs scripts/release-prepare.test.mjs scripts/android-ci-signing.test.mjs",
+    "release:configure-ci": "node scripts/release-configure-ci.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
@@ -73,6 +77,7 @@
     "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^29.1.1",
+    "sharp": "0.35.5",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.7.3",
     "vite": "^6.1.0",

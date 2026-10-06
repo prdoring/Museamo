@@ -1,6 +1,52 @@
-# Local builds and GitHub Releases
+# Automatic mainline releases and local builds
 
-Build each platform on its supported host from the same clean commit. Build, verification, assembly, and publication are separate commands. GitHub Actions checks source; local release commands create the reviewed downloads.
+Every successful **Checks** run for a push to `main` starts **Mainline release**. Pull requests, other branches, and failed checks do not release. GitHub-hosted runners build Windows x64 and signed Android downloads, verify both, and publish a stable GitHub Release. A separate Mac job uploads the same version to internal TestFlight; an Apple failure does not block Windows and Android publication.
+
+## Automatic versions and recovery
+
+Release runs queue without canceling each other (`queue: max`, currently up to 100 pending runs). The checked main commit is captured when CI finishes. Each run reserves the next numeric patch version above existing release tags and the source version, beginning with `0.4.1` after `v0.4.0`. Android's versionCode increases above all existing reservations and the source value. Manually raising the source version establishes a new version floor; the automatic release still advances its patch.
+
+The workflow updates package.json, package-lock.json, the Cargo workspace and Cargo.lock, Tauri, and Android versions in a **release commit parented by the checked main commit**. It generates notes from commit subjects since the newest ancestor reservation. This commit is tagged `vVERSION`; it is not pushed to main. Numeric versions on main therefore remain the development baseline. The annotated tag records the original source commit, version, Android code, and owning Actions run ID. A tag reserves a version even if builds fail; gaps are expected. Do not delete, move, or reuse reserved tags.
+
+All three build jobs use the exact release commit. A repeated Checks event for the same source detects its existing reservation and links to the owning release run instead of building or uploading again. **Retry failed jobs in that original Mainline release run.** Reruns keep the version and tag. iPhone build numbers increase with run attempts.
+
+Verified Windows and Android artifacts are retained for 30 days. A full rerun restores those original files rather than rebuilding them, preserving exact bytes for interrupted draft uploads. Missing or expired artifacts and changed draft assets require manual recovery; never replace existing draft downloads to conceal a mismatch. Published releases are skipped on rerun. TestFlight can be retried independently after GitHub publication.
+
+The final Actions summary reports Windows, Android, GitHub publication, and TestFlight separately. A successful upload means Apple accepted the package, not that processing has finished. Enable automatic distribution on the internal tester group in App Store Connect. External TestFlight groups and App Store publication are outside this workflow.
+
+## One-time automatic release configuration
+
+Apple's existing configuration is described in [TestFlight setup](testflight-setup.md). Certificates and profiles must remain valid. Renew an expiring profile/certificate and update the corresponding secrets before the next release; preserve the bundle ID and team.
+
+Android requires these repository Actions settings:
+
+| Type | Name | Purpose |
+| --- | --- | --- |
+| Secret | `MUSEAMO_KEYSTORE_BASE64` | Base64 contents of the existing signing keystore |
+| Secret | `MUSEAMO_KEY_ALIAS` | Existing private-key alias |
+| Secret | `MUSEAMO_STORE_PASSWORD` | Keystore password |
+| Secret | `MUSEAMO_KEY_PASSWORD` | Private-key password |
+| Variable | `MUSEAMO_ANDROID_CERT_SHA256` | Trusted certificate SHA-256, 64 hex characters without colons |
+
+From the Windows account that owns the saved signing configuration, with GitHub CLI logged in, JAVA_HOME set, and Android build-tools 36.0.0 installed, run:
+
+```sh
+npm run release:configure-ci
+```
+
+The helper loads the saved identity or a complete explicit environment override, downloads the published signed `v0.4.0` APK, and verifies that its certificate matches the existing key before sending credentials directly to encrypted GitHub Actions secrets through standard input. It never creates a key or prints passwords. If the key differs, restore the original published signing identity; do not generate a replacement. Partial secret uploads can be retried. Repository settings may also be configured manually using a verified original-key backup.
+
+To use a portable PKCS12 backup instead of the saved identity, run the command below in your own interactive terminal. It asks for the backup password with input hidden, uses `museamo-release` as the default alias (override with `--alias ALIAS`), verifies private-key access and the published certificate, and sends the backup directly to Actions secrets without changing local signing configuration:
+
+```sh
+node scripts/release-configure-ci.mjs --keystore ../museamo-signing-backup.p12
+```
+
+The Android runner decodes the keystore only into protected temporary storage, requires the trusted fingerprint, checks the APK signature and all four ABIs, and removes the temporary file on success or failure. Private signing files are never included in uploaded artifacts. Only reservation and publication jobs have repository contents-write permission. The existing pre-push hook now allows ordinary development pushes.
+
+## Optional local release commands
+
+Build each platform on its supported host from the same clean commit. Build, verification, assembly, and publication remain separate commands for local use. Local commands do not participate in the automatic version allocator; coordinate manual releases with pending automatic runs to avoid conflicting tags.
 
 The old `npm run release` build-and-push shortcut is removed. It now checks release source only. `release:build` defaults to Windows and builds that platform only. Android needs `--platform android`. Publication requires an explicit reviewed assembly directory.
 
@@ -8,7 +54,7 @@ The old `npm run release` build-and-push shortcut is removed. It now checks rele
 
 Install the [development prerequisites](development.md) for the platform you are building. Publication also needs [GitHub CLI](https://cli.github.com/) and `gh auth login`. Android builders need JDK 21, SDK 36, build-tools 36.0.0, NDK 30.0.14904198, and all four Rust Android targets. Set `JAVA_HOME` and `ANDROID_HOME`. Use the committed Gradle wrapper.
 
-Run `npm run release:setup` to install the repository's local pre-push guard. It sets this checkout's `core.hooksPath` to `.githooks`, and refuses to overwrite another hook directory. After setup, direct pushes to `origin` are blocked with instructions to build, verify, assemble, and explicitly publish. Only `release:publish` sets the hook override after validating the assembly. The hook is local: collaborators must install it in their own checkout if they want the same behavior. GitHub does not enforce local hooks.
+Run `npm run release:setup` to install the repository's hooks. It sets this checkout's `core.hooksPath` to `.githooks`, and refuses to overwrite another hook directory. Normal pushes are allowed, including in checkouts that previously installed the release-only guard. Mainline publication is enforced by the Actions workflow rather than a local push restriction.
 
 ## Android signing
 
@@ -24,7 +70,7 @@ Run this setup in the terminal you will use for releases. An agent's execution e
 
 With no signing variables set, this creates a 4096-bit RSA key valid for 10,000 days in `%LOCALAPPDATA%\Museamo\release-signing\museamo-release.p12`. The keystore password is randomly generated and saved in `signing.json` using Windows account encryption (DPAPI). Access to the directory is restricted to your account, administrators, and SYSTEM. These files stay outside the repository. Repeating setup verifies the existing key; it never replaces it.
 
-On Windows, signed Android `release:build -- --platform android` commands load the saved key automatically. Passwords are passed to build tools only in their process environment, never in command-line arguments, release manifests, or GitHub secrets.
+On Windows, signed Android `release:build -- --platform android` commands load the saved key automatically. Passwords are passed to build tools only in their process environment, never in command-line arguments or release manifests. Automatic runners receive the same identity through encrypted GitHub Actions secrets.
 
 Create a portable recovery backup before publishing:
 
@@ -164,11 +210,11 @@ npm run release:verify -- --directory releases/VERSION/assembly-XXXXXX
 npm run release:publish -- --directory releases/VERSION/assembly-XXXXXX
 ```
 
-Bundle verification checks integrity and all platform verification receipts. It does not rerun tests on the publication host. Publication repeats validation, requires the current clean commit, and rejects an already published version before creating a tag or pushing. Only this explicit command creates `vVERSION`, atomically pushes the current branch and tag to `origin`, uploads a draft, and publishes after uploads succeed. It uses the configured GitHub repository, including forks.
+Bundle verification checks integrity and all platform verification receipts. It does not rerun tests on the publication host. Local publication repeats validation, requires the current clean commit and a branch, and rejects an already published version before creating a tag or pushing. It creates `vVERSION`, atomically pushes the current branch and tag to `origin`, uploads a draft, and publishes after uploads succeed. CI uses `release:publish -- --ci --directory PATH`: it requires GitHub Actions, an existing annotated reservation, and the matching remote tag; it never pushes a branch. Both modes use the configured GitHub repository.
 
 An interrupted upload leaves a recoverable draft. Retry with the same clean commit and assembly. Publication copies the reviewed assembly to a separate snapshot before uploading. It downloads every new or existing draft asset and verifies its size and hash against the captured expectations, including release notes, the manifest, and checksum list. It rechecks the clean source and original assembly immediately before publishing. Existing draft assets must have identical bytes; they are verified and skipped, never clobbered. A mismatch leaves the draft unpublished. Unexpected or different draft assets stop publication for manual review. Published releases and their tags are immutable. Use a new version for a different download set, signing mode, or source. Do not run competing publishers for the same version.
 
-The commands never stage, commit, merge, force-push, change repository visibility, or upload ignored private files. The source archive comes from the committed tree only.
+Local build, verification, assembly, and publication commands never stage, commit, merge, force-push, change repository visibility, or upload ignored private files. Automatic preparation stages only the version files and generated notes in its isolated runner checkout and pushes only its new tag. The source archive comes from the release's committed tree.
 
 ## Before changing repository visibility
 

@@ -21,7 +21,8 @@ export function options(argv) {
       else if (flag === "--platforms") result.platforms = value.split(",");
       else if (flag === "--manifest") result.manifests.push(path.resolve(value));
       else result.directory = path.resolve(value);
-    } else if (flag === "--allow-dirty") result.allowDirty = true;
+    } else if (flag === "--ci") result.ci = true;
+    else if (flag === "--allow-dirty") result.allowDirty = true;
     else if (flag === "--prerelease") result.prerelease = true;
     else throw new Error(`Unknown option: ${flag}`);
   }
@@ -29,6 +30,7 @@ export function options(argv) {
   if (result.platform && !platforms.includes(result.platform)) throw new Error("--platform must be android, windows, macos, or linux.");
   if (!result.platforms.length || new Set(result.platforms).size !== result.platforms.length || result.platforms.some(platform => !platforms.includes(platform))) throw new Error("Invalid or duplicate --platforms selection.");
   if (result.allowDirty && command !== "build") throw new Error("--allow-dirty is only available for local build previews.");
+  if (result.ci && command !== "publish") throw new Error("--ci is only available for publication.");
   if (command === "build") result.platform ||= "windows";
   if (result.platform && !["build", "verify"].includes(command)) throw new Error("--platform is only available for build or verify.");
   if (result.manifests.length && command !== "assemble") throw new Error("--manifest is only available for assemble.");
@@ -83,7 +85,8 @@ async function versionInfo() {
 async function sourceState(allowDirty = false) {
   const dirty = !!git("status", "--porcelain", "--untracked-files=all");
   if (dirty && !allowDirty) throw new Error("Commit your source and documentation before releasing. Local build previews can use --allow-dirty.");
-  return { commit: git("rev-parse", "HEAD"), branch: git("symbolic-ref", "--short", "HEAD"), dirty };
+  const branch = spawnSync("git", ["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: root, encoding: "utf8" });
+  return { commit: git("rev-parse", "HEAD"), branch: branch.status === 0 ? branch.stdout.trim() : null, dirty };
 }
 export function assertBuildHost(platform, host = process.platform, arch = process.arch) {
   const expected = { windows: ["win32", "x64"], macos: ["darwin", "arm64"], linux: ["linux", "x64"] }[platform];
@@ -249,57 +252,72 @@ async function verify(opts, info, source) {
   await writeJson(path.join(directory, "verification.json"), { schema: 1, commit: source.commit, version: info.version, platform: opts.platform, manifestSha256: metadataHash(manifest), checks: verificationChecks(opts.platform), verifiedAt: new Date().toISOString() });
   console.log(`Verification passed for ${opts.platform}. Reassemble to include this receipt.`);
 }
-async function publish(opts, info, source) {
+export async function publish(opts, info, source, dependencies = {}) {
+  const execute = dependencies.run || run;
+  const gitCommand = dependencies.git || git;
+  const currentSource = dependencies.sourceState || sourceState;
+  if (opts.ci && process.env.GITHUB_ACTIONS !== "true") throw new Error("CI publication requires GitHub Actions.");
+  if (!opts.ci && !source.branch) throw new Error("Local publication requires a branch. Use --ci only in GitHub Actions.");
   if (!opts.directory) throw new Error("Publication requires an explicit --directory for the reviewed assembly.");
   const directory = opts.directory;
   const manifestBytes = await readFile(path.join(directory, "manifest.json"), "utf8");
   const manifest = JSON.parse(manifestBytes);
   await verifyBundle(directory, manifest, { ...info, ...source }, { requireVerification: true });
   const expectedUploads = publicationFiles(manifest, manifestBytes);
-  const snapshotParent = path.join(root, "releases", info.version);
+  const snapshotParent = dependencies.snapshotParent || path.join(root, "releases", info.version);
   await mkdir(snapshotParent, { recursive: true });
   const snapshot = await mkdtemp(path.join(snapshotParent, "publication-"));
   for (const file of expectedUploads) await copyFile(path.join(directory, file.name), path.join(snapshot, file.name));
   await verifyFiles(snapshot, expectedUploads);
   const tag = `v${info.version}`;
-  run("gh", ["auth", "status"]);
-  const repo = run("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], { stdio: "pipe" });
+  execute("gh", ["auth", "status"]);
+  const repo = execute("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], { stdio: "pipe" });
   // Query all releases successfully before mutating tags or remote branches. Network failures fail closed.
-  const releases = JSON.parse(run("gh", ["api", "--paginate", "--slurp", `repos/${repo}/releases?per_page=100`], { stdio: "pipe" })).flat();
+  const releases = JSON.parse(execute("gh", ["api", "--paginate", "--slurp", `repos/${repo}/releases?per_page=100`], { stdio: "pipe" })).flat();
   const existingRelease = releases.find(release => release.tag_name === tag);
   if (existingRelease && !existingRelease.draft) throw new Error(`${tag} is already published. Use a new version instead of replacing downloads.`);
-  const existing = spawnSync("git", ["rev-parse", "--verify", `refs/tags/${tag}`], { cwd: root, encoding: "utf8" });
-  if (existing.status === 0) {
-    if (git("rev-list", "-n", "1", tag) !== source.commit) throw new Error(`${tag} points to another commit. Never replace release tags.`);
-  } else git("tag", "-a", tag, "-m", `Museamo ${info.version}`, source.commit);
+  let tagExists = false;
+  try { gitCommand("rev-parse", "--verify", `refs/tags/${tag}`); tagExists = true; }
+  catch (error) { if (opts.ci) throw new Error("CI publication requires an existing reserved tag.", { cause: error }); }
+  if (opts.ci) {
+    const remote = gitCommand("ls-remote", "origin", `refs/tags/${tag}^{}`);
+    if (remote.split(/\s/)[0] !== source.commit) throw new Error("Reserved remote tag differs from this release commit.");
+    const reservation = JSON.parse(gitCommand("for-each-ref", "--format=%(contents)", `refs/tags/${tag}`));
+    if (reservation.schema !== 1 || reservation.version !== info.version || reservation.versionCode !== info.versionCode || reservation.sourceCommit !== gitCommand("rev-parse", "HEAD^")) throw new Error("Invalid CI release reservation.");
+  }
+  if (tagExists) {
+    if (gitCommand("rev-list", "-n", "1", tag) !== source.commit) throw new Error(`${tag} points to another commit. Never replace release tags.`);
+  } else gitCommand("tag", "-a", tag, "-m", `Museamo ${info.version}`, source.commit);
   // Recheck source and bytes immediately before the explicit network mutation.
-  await verifyBundle(directory, manifest, { ...info, ...await sourceState() }, { requireVerification: true });
-  process.env.MUSEAMO_RELEASE_PUSH = "1";
-  git("push", "--atomic", "origin", `HEAD:refs/heads/${source.branch}`, `refs/tags/${tag}`);
-  if (!existingRelease) run("gh", ["release", "create", tag, "--repo", repo, "--verify-tag", "--draft", "--title", `Museamo ${info.version}`, "--notes-file", path.join(snapshot, "release-notes.md"), ...(manifest.prerelease ? ["--prerelease"] : [])]);
+  await verifyBundle(directory, manifest, { ...info, ...await currentSource() }, { requireVerification: true });
+  if (!opts.ci) {
+    process.env.MUSEAMO_RELEASE_PUSH = "1";
+    gitCommand("push", "--atomic", "origin", `HEAD:refs/heads/${source.branch}`, `refs/tags/${tag}`);
+  }
+  if (!existingRelease) execute("gh", ["release", "create", tag, "--repo", repo, "--verify-tag", "--draft", "--title", `Museamo ${info.version}`, "--notes-file", path.join(snapshot, "release-notes.md"), ...(manifest.prerelease ? ["--prerelease"] : [])]);
   // Refresh draft status before uploads; published releases must never be clobbered on retry.
-  const status = JSON.parse(run("gh", ["release", "view", tag, "--repo", repo, "--json", "isDraft,assets"], { stdio: "pipe" }));
+  const status = JSON.parse(execute("gh", ["release", "view", tag, "--repo", repo, "--json", "isDraft,assets"], { stdio: "pipe" }));
   if (!status.isDraft) throw new Error(`${tag} is already published. Use a new version.`);
   const expectedNames = new Set(expectedUploads.map(file => file.name));
   if (status.assets.some(asset => !expectedNames.has(asset.name))) throw new Error("Existing draft has unexpected assets. Review it before retrying publication.");
   for (const file of expectedUploads) {
     if (!status.assets.some(asset => asset.name === file.name)) {
       // No --clobber, even for drafts. A concurrent upload cannot replace an asset.
-      run("gh", ["release", "upload", tag, "--repo", repo, path.join(snapshot, file.name)]);
+      execute("gh", ["release", "upload", tag, "--repo", repo, path.join(snapshot, file.name)]);
     }
     const downloaded = await mkdtemp(path.join(snapshot, "remote-check-"));
-    run("gh", ["release", "download", tag, "--repo", repo, "--pattern", file.name, "--dir", downloaded]);
+    execute("gh", ["release", "download", tag, "--repo", repo, "--pattern", file.name, "--dir", downloaded]);
     // Verify new uploads and draft retries against the captured expected hashes.
     // A failure leaves the draft unpublished and does not overwrite any download.
     await verifyFiles(downloaded, [file]);
   }
-  const beforePublish = JSON.parse(run("gh", ["release", "view", tag, "--repo", repo, "--json", "isDraft,assets"], { stdio: "pipe" }));
+  const beforePublish = JSON.parse(execute("gh", ["release", "view", tag, "--repo", repo, "--json", "isDraft,assets"], { stdio: "pipe" }));
   if (!beforePublish.isDraft) throw new Error(`${tag} was already published by another process.`);
   if (beforePublish.assets.length !== expectedUploads.length || new Set(beforePublish.assets.map(asset => asset.name)).size !== expectedUploads.length || beforePublish.assets.some(asset => !expectedNames.has(asset.name))) throw new Error("Draft assets changed during publication. Review the draft before retrying.");
-  await verifyBundle(directory, manifest, { ...info, ...await sourceState() }, { requireVerification: true });
+  await verifyBundle(directory, manifest, { ...info, ...await currentSource() }, { requireVerification: true });
   await verifyFiles(directory, expectedUploads);
   await verifyFiles(snapshot, expectedUploads);
-  run("gh", ["release", "edit", tag, "--repo", repo, "--draft=false", `--prerelease=${manifest.prerelease}`, `--latest=${!manifest.prerelease}`, "--notes-file", path.join(snapshot, "release-notes.md")]);
+  execute("gh", ["release", "edit", tag, "--repo", repo, "--draft=false", `--prerelease=${manifest.prerelease}`, `--latest=${!manifest.prerelease}`, "--notes-file", path.join(snapshot, "release-notes.md")]);
 }
 async function main() {
   const opts = options(process.argv.slice(2));
@@ -308,7 +326,7 @@ async function main() {
     const current = spawnSync("git", ["config", "--get", "core.hooksPath"], { cwd: root, encoding: "utf8" });
     if (current.status === 0 && current.stdout.trim() !== ".githooks") throw new Error("An existing hooksPath is configured. Merge the pre-push hook manually.");
     git("config", "core.hooksPath", ".githooks");
-    console.log("Local push guard installed. Publication uses release:publish after build, verification and assembly.");
+    console.log("Repository hooks installed. Normal pushes are allowed; main releases run in GitHub Actions.");
     return;
   }
   const info = await versionInfo(), source = await sourceState(opts.allowDirty);

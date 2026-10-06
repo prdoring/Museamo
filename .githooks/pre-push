@@ -1,8 +1,4 @@
 #!/bin/sh
-# Installed locally with npm run release:setup; no global Git settings are changed.
-if [ "$1" = "origin" ] && [ "$MUSEAMO_RELEASE_PUSH" != "1" ]; then
-  echo "Museamo origin pushes require an explicit verified release publication."
-  echo "Build each platform, run release:verify, then release:assemble and release:publish."
-  echo "Build and assembly commands never push. See docs/releases.md."
-  exit 1
-fi
+# Mainline releases are built and verified by GitHub Actions after Checks succeeds.
+# Compatible with existing checkouts using core.hooksPath=.githooks.
+exit 0

@@ -1,6 +1,30 @@
 name: iPhone TestFlight
 
 on:
+  workflow_call:
+    inputs:
+      upload:
+        type: boolean
+        default: true
+      release_commit:
+        type: string
+        required: true
+      release_version:
+        type: string
+        required: true
+    secrets:
+      IOS_DISTRIBUTION_P12_BASE64:
+        required: true
+      IOS_DISTRIBUTION_P12_PASSWORD:
+        required: true
+      IOS_PROVISIONING_PROFILE_BASE64:
+        required: true
+      ASC_API_KEY_BASE64:
+        required: true
+      ASC_KEY_ID:
+        required: true
+      ASC_ISSUER_ID:
+        required: true
   workflow_dispatch:
     inputs:
       upload:
@@ -14,20 +38,31 @@ permissions:
 
 concurrency:
   group: museamo-testflight
+  queue: max
   cancel-in-progress: false
 
 jobs:
   distribute:
-    # Secrets and uploads are available only to a manually selected main build.
-    if: github.ref == 'refs/heads/main'
+    # Reusable calls inherit the caller's event; trust only successful own-repo main CI.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.repository.full_name == github.repository)
     runs-on: macos-15
     timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID }}
+      MUSEAMO_RELEASE_COMMIT: ${{ inputs.release_commit }}
+      MUSEAMO_RELEASE_VERSION: ${{ inputs.release_version }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.release_commit || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
@@ -45,6 +80,7 @@ jobs:
         run: node scripts/ios-testflight.mjs check
       - run: npm ci
       - run: npm run test:ios:distribution
+      - run: npm run test:ios:assets
       - run: npm test
       - run: npm run test:ios
       - name: Build and sync the iPhone interface

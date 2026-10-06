@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm, stat, symlink } from "node:fs/promises";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { options, assertVersions, assertBuildHost, sha256, verifyBundle } from "./release.mjs";
+import { options, assertVersions, assertBuildHost, sha256, verifyBundle, publish } from "./release.mjs";
 import { artifactName, platforms, targets, kinds, assertPlatformManifest, verifyFiles, metadataHash, verificationChecks, publicationFiles } from "./release-artifacts.mjs";
 import { configureSigning, signingSource } from "./release-signing.mjs";
 
@@ -52,6 +53,8 @@ test("build commands select one host, debug previews stay local, and publication
   assert.throws(() => options(["build", "--android", "debug"]), /only available for Android/);
   assert.throws(() => options(["build", "--platform", "android", "--android", "unsigned"]), /debug or release/);
   assert.throws(() => options(["build", "--skip-tests"]), /Unknown option/);
+  assert.equal(options(["publish", "--ci"]).ci, true);
+  assert.throws(() => options(["build", "--ci"]), /only available for publication/);
   assert.throws(() => options(["assemble", "--platforms", "linux,linux"]), /duplicate/);
   assert.throws(() => options(["build", "--platform"]), /Missing value/);
   assert.deepEqual(options(["assemble", "--platforms", "android,windows"]).platforms, ["android", "windows"]);
@@ -68,6 +71,88 @@ test("version mismatch and invalid release versions stop packaging", () => {
 });
 
 const source = { version: "0.4.0", versionCode: 5, commit: "a".repeat(40), dirty: false };
+async function publicationHarness() {
+  const { directory, manifest } = await fixture(["android", "windows"]);
+  await writeFile(path.join(directory, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
+  const snapshotParent = await mkdtemp(path.join(tmpdir(), "museamo-publication-test-"));
+  const remote = new Map(), calls = [], parent = "c".repeat(40);
+  const state = { failUpload: 0, uploads: 0, edits: 0, published: false, corruptDownload: false, remoteCommit: source.commit };
+  const dependencies = {
+    snapshotParent,
+    sourceState: async () => source,
+    git: (...args) => {
+      calls.push(["git", ...args]);
+      if (args[0] === "rev-parse") return args[1] === "HEAD^" ? parent : source.commit;
+      if (args[0] === "rev-list") return source.commit;
+      if (args[0] === "ls-remote") return `${state.remoteCommit}\trefs/tags/v0.4.0^{}`;
+      if (args[0] === "for-each-ref") return JSON.stringify({ schema: 1, version: source.version, versionCode: source.versionCode, sourceCommit: parent });
+      throw new Error(`Unexpected git mutation: ${args[0]}`);
+    },
+    run: (command, args) => {
+      calls.push([command, ...args]);
+      assert.equal(command, "gh");
+      if (args[0] === "auth") return "";
+      if (args[0] === "repo") return "owner/repo";
+      if (args[0] === "api") return JSON.stringify([[{ tag_name: "v0.4.0", draft: !state.published }]]);
+      if (args[1] === "view") return JSON.stringify({ isDraft: !state.published, assets: [...remote.keys()].map(name => ({ name })) });
+      if (args[1] === "upload") {
+        state.uploads++;
+        if (state.failUpload === state.uploads) throw new Error("Interrupted upload");
+        const filename = args.at(-1), name = path.basename(filename);
+        assert.equal(remote.has(name), false, "An existing asset must never be replaced");
+        remote.set(name, readFileSync(filename));
+        return "";
+      }
+      if (args[1] === "download") {
+        const name = args[args.indexOf("--pattern") + 1], destination = args[args.indexOf("--dir") + 1];
+        writeFileSync(path.join(destination, name), state.corruptDownload ? "changed bytes" : remote.get(name));
+        return "";
+      }
+      if (args[1] === "edit") { state.edits++; state.published = true; return ""; }
+      throw new Error(`Unexpected release command: ${args[1]}`);
+    },
+  };
+  return { directory, manifest, dependencies, state, calls, remote, cleanup: async () => { await rm(directory, { recursive: true, force: true }); await rm(snapshotParent, { recursive: true, force: true }); } };
+}
+
+test("CI publication resumes identical draft bytes and never pushes a branch or tag", async () => {
+  const harness = await publicationHarness(), previous = process.env.GITHUB_ACTIONS;
+  process.env.GITHUB_ACTIONS = "true";
+  try {
+    harness.state.failUpload = 2;
+    await assert.rejects(publish({ ci: true, directory: harness.directory }, source, source, harness.dependencies), /Interrupted upload/);
+    assert.equal(harness.state.edits, 0);
+    assert.equal(harness.remote.size, 1);
+    harness.state.failUpload = 0;
+    await publish({ ci: true, directory: harness.directory }, source, source, harness.dependencies);
+    assert.equal(harness.state.edits, 1);
+    assert.equal(harness.remote.size, harness.manifest.files.length + 2);
+    assert.equal(harness.calls.some(call => call[0] === "git" && ["push", "tag"].includes(call[1])), false);
+    assert.equal(harness.calls.some(call => call.includes("--clobber")), false);
+    const uploads = harness.state.uploads;
+    await assert.rejects(publish({ ci: true, directory: harness.directory }, source, source, harness.dependencies), /already published/);
+    assert.equal(harness.state.uploads, uploads);
+  } finally { if (previous === undefined) delete process.env.GITHUB_ACTIONS; else process.env.GITHUB_ACTIONS = previous; await harness.cleanup(); }
+});
+
+test("CI publication refuses changed remote tags, altered downloads, and incomplete receipts", async () => {
+  const harness = await publicationHarness(), previous = process.env.GITHUB_ACTIONS;
+  process.env.GITHUB_ACTIONS = "true";
+  try {
+    harness.state.remoteCommit = "d".repeat(40);
+    await assert.rejects(publish({ ci: true, directory: harness.directory }, source, source, harness.dependencies), /remote tag differs/);
+    assert.equal(harness.state.uploads, 0);
+    harness.state.remoteCommit = source.commit;
+    harness.state.corruptDownload = true;
+    await assert.rejects(publish({ ci: true, directory: harness.directory }, source, source, harness.dependencies), /Release file changed/);
+    assert.equal(harness.state.edits, 0);
+    const modified = { ...harness.manifest, verification: {} };
+    await writeFile(path.join(harness.directory, "manifest.json"), JSON.stringify(modified));
+    await assert.rejects(publish({ ci: true, directory: harness.directory }, source, source, harness.dependencies), /Missing or stale verification/);
+    assert.equal(harness.state.edits, 0);
+  } finally { if (previous === undefined) delete process.env.GITHUB_ACTIONS; else process.env.GITHUB_ACTIONS = previous; await harness.cleanup(); }
+});
+
 function platformManifest(platform, android = "release") {
   return { schema: 2, version: source.version, versionCode: source.versionCode, commit: source.commit, cleanSource: true, platform, target: targets[platform], prerelease: android === "debug", ...(platform === "android" ? { android, signingCertificate: "b".repeat(64) } : {}), ...(platform === "macos" ? { macosDistribution: "developer-id-notarized" } : {}), files: [] };
 }
