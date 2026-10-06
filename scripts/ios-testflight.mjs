@@ -133,6 +133,7 @@ function build(env) {
   run('xcodebuild', ['-project', 'ios/App/App.xcodeproj', '-scheme', 'App', '-configuration', 'Release', '-destination', 'generic/platform=iOS', '-archivePath', archive, '-derivedDataPath', path.join(p.directory, 'DerivedData'), `DEVELOPMENT_TEAM=${env.IOS_TEAM_ID}`, 'CODE_SIGN_STYLE=Manual', `CODE_SIGN_IDENTITY=${sha1}`, `PROVISIONING_PROFILE_SPECIFIER=${uuid}`, `MARKETING_VERSION=${version}`, `CURRENT_PROJECT_VERSION=${number}`, 'archive'], { visible: true });
   const info = readPlist(path.join(archive, 'Products', 'Applications', 'App.app', 'Info.plist'));
   if (info.CFBundleIdentifier !== bundleId || info.CFBundleVersion !== number || info.CFBundleShortVersionString !== version) throw new Error('Archived app identity or version does not match the requested TestFlight build.');
+  run(process.execPath, ['scripts/generate-ios-assets.mjs', '--verify-app', path.join(archive, 'Products', 'Applications', 'App.app')], { visible: true });
   run('xcodebuild', ['-exportArchive', '-archivePath', archive, '-exportPath', p.exportDir, '-exportOptionsPlist', options], { visible: true });
   const record = { version, buildNumber: number, bundleId, commit: env.GITHUB_SHA, runId: env.GITHUB_RUN_ID };
   writeFileSync(path.join(p.directory, 'build-record.json'), JSON.stringify(record, null, 2) + '\n');

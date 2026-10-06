@@ -24,10 +24,20 @@ For physical-device signing, installation, and manual checks, follow the [iPhone
 
 For installation from a Windows development machine, follow [the TestFlight setup guide](testflight-setup.md). The manually triggered `iPhone TestFlight` GitHub workflow signs and exports an iPhone Release build using encrypted Actions secrets; upload to Apple is a separate checkbox. Regular CI checks an unsigned Release archive without accessing signing credentials.
 
+## Icon and launch screen
+
+`npm run ios:assets` generates the iPhone asset catalog from `src/assets/branding/lantern.json`, the same master geometry used by the web/Android/desktop branding exporter. It creates an opaque square 1024×1024 App Store icon, transparent light/dark launch marks at 1×/2×/3×, and an adaptive cream/navy launch background. The storyboard centers an 88×128-point lantern using Auto Layout; it does not crop a full-screen splash bitmap. The native web view uses the same background during startup. iOS applies its own home-screen icon mask.
+
+`ios:sync` runs generation and validation before the web build and Capacitor sync, so local, simulator, CI, and TestFlight builds use the latest master artwork. Generated assets are committed for direct Xcode use. Run `npm run ios:assets:check` to detect missing, stale, incorrectly sized, or transparent icon exports; PNG checks compare decoded pixels rather than compression bytes. `npm run test:ios:assets` exercises bad icons, missing launch images, changed artwork, and broken launch-screen wiring using disposable files.
+
+The Mac CI archive and signed TestFlight archive also inspect the compiled `Assets.car` and `LaunchScreen.storyboardc` before export/upload. These checks confirm the icon and launch artwork were bundled; they do not substitute for viewing light/dark cold launches on an iPhone. On-device checks should cover portrait/landscape, launch-to-interface transitions, and the installed home-screen icon. iOS may cache launch screens across upgrades; changing source files alone does not change an already installed build.
+
 ## Checks
 
 ```sh
 npm test
+npm run test:ios:assets
+npm run ios:assets:check
 npm run test:ios
 npm run ios:sync
 npm run test:ios:ui

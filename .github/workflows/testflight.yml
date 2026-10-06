@@ -45,6 +45,7 @@ jobs:
         run: node scripts/ios-testflight.mjs check
       - run: npm ci
       - run: npm run test:ios:distribution
+      - run: npm run test:ios:assets
       - run: npm test
       - run: npm run test:ios
       - name: Build and sync the iPhone interface

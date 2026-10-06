@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync, readd
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { renderMark, renderIcon } from './branding-art.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const source = JSON.parse(readFileSync(path.join(root, "src/assets/branding/lantern.json"), "utf8"));
@@ -11,7 +12,7 @@ const pack = path.join(root, "output/branding/museamo-logo-pack");
 const res = path.join(root, "android/app/src/main/res");
 const write = (name, contents) => { mkdirSync(path.dirname(name), { recursive: true }); writeFileSync(name, contents + "\n"); };
 const svg = (width, height, body, description) => `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="title desc"><title id="title">Museamo</title><desc id="desc">${description}</desc>${body}</svg>`;
-const mark = (ink, flame = ochre) => `<g fill="${ink}">${source.mark.frame.map(d => `<path d="${d}"/>`).join("")}</g><path fill="${flame}" fill-rule="evenodd" d="${source.mark.flame}"/>`;
+const mark = (ink, flame = ochre) => renderMark(source, ink, flame);
 let wordWidth = 0;
 const letterPaths = [...source.wordmark.letters].map((letter, i) => {
   const glyph = source.wordmark.glyphs[letter], x = wordWidth;
@@ -21,7 +22,7 @@ const letterPaths = [...source.wordmark.letters].map((letter, i) => {
 const word = ink => `<g fill="${ink}">${letterPaths}</g>`;
 const horizontal = (ink, flame = ochre) => `<g transform="translate(10 8) scale(.224)">${mark(ink, flame)}</g><g transform="translate(98 22) scale(.96)">${word(ink)}</g>`;
 const stacked = (ink, flame = ochre) => `<g transform="translate(160 12) scale(.6)">${mark(ink, flame)}</g><g transform="translate(38 324) scale(1.198)">${word(ink)}</g>`;
-const icon = (rounded = true) => svg(512, 512, `<rect width="512" height="512"${rounded ? ' rx="88"' : ""} fill="${navy}"/><g transform="translate(116.8 54.16) scale(.87)">${mark(cream)}</g>`, "Carved lantern app icon; cream and ochre on navy.");
+const icon = (rounded = true) => renderIcon(source, rounded);
 const foreground = (monochrome = false) => svg(108, 108, `<g transform="translate(33.84 24.768) scale(.126)">${mark(monochrome ? "#FFFFFF" : cream, monochrome ? "#FFFFFF" : ochre)}</g>`, "Android adaptive-icon foreground, contained within the central safe circle.");
 const exported = {
   "mark-on-dark.svg": svg(320, 464, mark(cream), "Carved lantern mark for navy and other dark surfaces."),

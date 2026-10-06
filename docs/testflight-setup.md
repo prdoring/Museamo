@@ -130,7 +130,7 @@ The workflow must first be reviewed and merged into `main` before it appears in 
 2. Select **iPhone TestFlight**.
 3. Click **Run workflow** and select **main**.
 4. For the first run, leave **Upload the signed build to Apple TestFlight** unchecked.
-5. Run it. GitHub checks configuration, tests the app, builds the web interface, signs the iPhone Release archive, and exports the IPA.
+5. Run it. GitHub checks configuration, tests the app, regenerates and verifies Museamo's iPhone icon and light/dark launch artwork, builds the web interface, signs the iPhone Release archive, checks branding in the compiled app, and exports the IPA. The asset source and local commands are described in [iOS development](ios-development.md#icon-and-launch-screen).
 6. Open the run and confirm it succeeded. Its summary shows the version, build number, and source commit. The signed IPA and build record are retained as an artifact for seven days. The artifact excludes certificates, private keys, and provisioning-source files; temporary signing material is cleaned up even on failure.
 7. Run the workflow again on **main**, this time checking the upload box. This builds a new numbered package, validates it with Apple, and uploads it to App Store Connect.
 8. Wait for Apple processing. A successful GitHub upload is not yet a ready-to-install build. Apple emails the processing result; check **App Store Connect → Museamo → TestFlight → iOS**.
