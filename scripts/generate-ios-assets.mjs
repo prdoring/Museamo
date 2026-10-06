@@ -84,9 +84,15 @@ export async function generateAssets({ project = root, check = false } = {}) {
   if (!check) for (const name of obsolete) rmSync(path.join(project, catalog, 'Splash.imageset', name), { force: true });
 }
 
+export function verifyCompiledLaunchScreen(app) {
+  // Xcode preserves the Base localization when linking this storyboard.
+  const locations = ['Base.lproj/LaunchScreen.storyboardc', 'LaunchScreen.storyboardc'];
+  if (!locations.some(relative => existsSync(path.join(app, relative)))) throw new Error('The app is missing its compiled launch screen.');
+}
+
 export function verifyBuiltApp(app) {
   if (process.platform !== 'darwin') throw new Error('Compiled iPhone assets can be checked only on macOS.');
-  if (!existsSync(path.join(app, 'LaunchScreen.storyboardc'))) throw new Error('The app is missing its compiled launch screen.');
+  verifyCompiledLaunchScreen(app);
   for (const [key, expected] of [['CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName', 'AppIcon'], ['UILaunchStoryboardName', 'LaunchScreen']]) {
     const plist = spawnSync('/usr/libexec/PlistBuddy', ['-c', `Print :${key}`, path.join(app, 'Info.plist')], { encoding: 'utf8' });
     if (plist.error || plist.status !== 0 || plist.stdout.trim() !== expected) throw new Error(`The compiled app must use ${expected}.`);

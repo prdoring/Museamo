@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
-import { generateAssets } from './generate-ios-assets.mjs';
+import { generateAssets, verifyCompiledLaunchScreen } from './generate-ios-assets.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 function fixture(t) {
@@ -18,6 +18,18 @@ function fixture(t) {
   return project;
 }
 const catalog = 'ios/App/App/Assets.xcassets';
+
+test('accepts Xcode compiled launch screens in Base.lproj and the bundle root', t => {
+  const app = mkdtempSync(path.join(os.tmpdir(), 'museamo-compiled-branding-'));
+  t.after(() => rmSync(app, { recursive: true, force: true }));
+  assert.throws(() => verifyCompiledLaunchScreen(app), /missing its compiled launch screen/);
+  const localized = path.join(app, 'Base.lproj/LaunchScreen.storyboardc');
+  mkdirSync(localized, { recursive: true });
+  assert.doesNotThrow(() => verifyCompiledLaunchScreen(app));
+  rmSync(localized, { recursive: true });
+  mkdirSync(path.join(app, 'LaunchScreen.storyboardc'));
+  assert.doesNotThrow(() => verifyCompiledLaunchScreen(app));
+});
 
 test('exports an opaque App Store icon and all light/dark launch densities', async t => {
   const project = fixture(t);
