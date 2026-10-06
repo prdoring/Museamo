@@ -1,11 +1,13 @@
 # iPhone sharing acceptance record
 
-Status: implementation candidate, October 6, 2026. Hardware acceptance has **not** passed. Keep the PR as a draft until automated checks and the device scenarios below pass. Portable backups remain deferred.
+Status: implementation candidate, October 6, 2026. Hardware acceptance has **not** passed. Keep the PR as a draft while its automated checks are pending; mark the feature complete only after the device scenarios below pass. Portable backups remain deferred.
 
 ## Candidate identity
 
 - Pull request: [iPhone sharing #13](https://github.com/prdoring/Museamo/pull/13).
-- Tested commit: pending final cloud checks.
+- Implementation commit: `968dc2a11186b255eee50a3475d1d1710ae08c90`; required results are in [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
+- Automated Mac baseline: `cec154ff1e45f2bc5923d60cfd1d4b9483541d16`, [20 Swift tests, simulator build and unsigned iPhone archive passed](https://github.com/prdoring/Museamo/actions/runs/37532863342/job/112506714451), October 6, 2026.
+- Physical tested commit: pending signed candidate and owner record.
 - TestFlight version/build: pending signed candidate.
 - iPhone model/iOS: pending owner record.
 - Android model/app version: pending owner record.

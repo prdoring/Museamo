@@ -2,9 +2,15 @@
 
 ## Connected iPhone candidate — October 6, 2026
 
-Implementation is in [draft PR #13](https://github.com/prdoring/Museamo/pull/13). Local checks passed: 148 frontend tests, 50 Rust tests, TypeScript, Apple framework-builder/change-classification tests, and 11 signing/distribution tests. Desktop passed 39 tests in the sandbox; the remaining DPAPI test passed under the normal Windows account. The first Mac run built all five Rust static-library targets and the XCFramework; packaging and Swift compiler diagnostics were corrected for a follow-up run. Final Mac/Android/desktop check records will be added after those runs finish.
+Implementation is in [draft PR #13](https://github.com/prdoring/Museamo/pull/13), with source commit `968dc2a11186b255eee50a3475d1d1710ae08c90`. Final required results are attached to the [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
+
+Local checks passed: **151 frontend tests**, **51 Rust tests**, TypeScript, the production web build, 40 Apple framework-builder/change-classification tests, and 11 signing/distribution tests. Desktop passed 39 tests in the sandbox; the remaining DPAPI test passed under the normal Windows account. Existing Vite artwork/chunk warnings remain.
+
+The [Mac validation baseline](https://github.com/prdoring/Museamo/actions/runs/37532863342/job/112506714451), tested October 6 on commit `cec154ff1e45f2bc5923d60cfd1d4b9483541d16`, passed all five Rust static-library targets, XCFramework packaging, **20 Swift tests**, the iPhone simulator build, the unsigned iPhone Release archive, and compiled branding verification. The real Rust-listener/Swift-repository test covered invitation preview/join, private fields/history exclusion, same-name tags, original transfer/checksum, saved location, checklist changes, one-shared-tag validation, matching-code/personal-library consent, linked shared tags and private copies after leave/stop. Android build/unit/lint, Android instrumentation, frontend checks, and macOS desktop checks also passed on that baseline. The final source adds a suspension-generation regression test, orphan-original cleanup and enrollment-response retry coverage; its required cloud results must pass before promotion.
 
 No connected-feature TestFlight build number or physical-device result has been recorded. The prior signed/uploaded text-only build does not validate these changes. Use the [candidate acceptance record](ios-sharing-acceptance.md) to record the exact commit/build/devices and every required scenario. Backups and automatic iPhone location capture remain deferred; see [privacy/encryption inventory](ios-privacy-inventory.md).
+
+The PR is unmerged. The existing trusted-main release workflow also publishes Windows/Android packages when it calls TestFlight, so promoting this candidate is an owner release decision. A successful unsigned archive does not confirm signing, Apple processing, or physical acceptance.
 
 ## Historical offline foundation — October 4, 2026
 
