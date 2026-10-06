@@ -1,9 +1,75 @@
 name: Checks
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+
+concurrency:
+  group: checks-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.scope.outputs.tests }}
+      android: ${{ steps.scope.outputs.android }}
+      ios: ${{ steps.scope.outputs.ios }}
+      desktop: ${{ steps.scope.outputs.desktop }}
+      desktop_windows: ${{ steps.scope.outputs.desktop_windows }}
+      desktop_macos: ${{ steps.scope.outputs.desktop_macos }}
+      desktop_linux: ${{ steps.scope.outputs.desktop_linux }}
+      ios_package: ${{ steps.scope.outputs.ios_package }}
+      desktop_package: ${{ steps.scope.outputs.desktop_package }}
+      release: ${{ steps.scope.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test change classification
+        run: node --test scripts/ci-changes.test.mjs
+      - name: Select checks for the complete change
+        id: scope
+        run: node scripts/ci-changes.mjs
+      - name: Record automatic release eligibility
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-change-scope
+          path: ci-change-scope.json
+          if-no-files-found: error
+          retention-days: 30
+
+  tests:
+    needs: changes
+    if: needs.changes.outputs.tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:release
+      - run: node --test scripts/build-sync-android.test.mjs
+      - run: npm run test:ios:distribution
+      - run: npm run test:ios:assets
+
   ios:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
     runs-on: macos-15
     env:
       # Capacitor 8 requires Xcode 26; avoid the runner's older default Xcode.
@@ -16,13 +82,14 @@ jobs:
           cache: npm
       - run: xcodebuild -version
       - run: npm ci
-      - run: npm run test:ios:distribution
-      - run: npm run test:ios:assets
+        if: needs.changes.outputs.ios_package == 'true'
       - name: Test native iOS persistence and platform contracts
         run: npm run test:ios
       - name: Build the iOS simulator app
+        if: needs.changes.outputs.ios_package == 'true'
         run: npm run ios:build
       - name: Check the unsigned iPhone release archive
+        if: needs.changes.outputs.ios_package == 'true'
         run: >-
           xcodebuild -project ios/App/App.xcodeproj -scheme App
           -configuration Release -destination 'generic/platform=iOS'
@@ -30,8 +97,12 @@ jobs:
           -derivedDataPath "$RUNNER_TEMP/Museamo-validation-derived"
           CODE_SIGNING_ALLOWED=NO archive
       - name: Verify branding in the compiled iPhone app
+        if: needs.changes.outputs.ios_package == 'true'
         run: node scripts/generate-ios-assets.mjs --verify-app "$RUNNER_TEMP/Museamo-validation.xcarchive/Products/Applications/App.app"
-  build:
+
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +126,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;30.0.14904198"
       - run: npm ci
-      - run: npm run test:release
-      - run: node --test scripts/build-sync-android.test.mjs
-      - run: npm test
       - run: cargo test -p museamo-sync-core --locked
       - run: npm run android:sync-core -- --release
       - run: npm run android:sync
@@ -65,6 +133,8 @@ jobs:
       - run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug -PsyncCoreRelease
         working-directory: android
   native-tests:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     env:
       SYNC_ANDROID_ABIS: x86_64
@@ -109,19 +179,15 @@ jobs:
         with:
           name: android-test-reports
           path: android/app/build/reports/androidTests/
-  desktop:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: windows-latest
-            target: x86_64-pc-windows-msvc
-          - runner: macos-14
-            target: aarch64-apple-darwin
-          - runner: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-    runs-on: ${{ matrix.runner }}
-    steps:
+  # Explicit names preserve the existing required matrix check contexts even when skipped.
+  desktop-windows:
+    name: desktop (windows-latest, x86_64-pc-windows-msvc)
+    needs: changes
+    if: needs.changes.outputs.desktop_windows == 'true'
+    runs-on: windows-latest
+    env:
+      DESKTOP_TARGET: x86_64-pc-windows-msvc
+    steps: &desktop_steps
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -130,7 +196,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.99.0
-          targets: ${{ matrix.target }}
+          targets: ${{ env.DESKTOP_TARGET }}
       - uses: Swatinem/rust-cache@v2
       - name: Install Linux desktop build dependencies
         if: runner.os == 'Linux'
@@ -149,12 +215,49 @@ jobs:
       # Unit/integration tests use a test-only identity provider, never the runner's keychain.
       - run: cargo test --workspace --locked -- --test-threads=1
       - name: Build unsigned validation bundles
-        run: npm run desktop:build -- --target ${{ matrix.target }} -- --locked
+        if: needs.changes.outputs.desktop_package == 'true'
+        run: npm run desktop:build -- --target ${{ env.DESKTOP_TARGET }} -- --locked
         env:
           APPIMAGE_EXTRACT_AND_RUN: '1'
       - uses: actions/upload-artifact@v4
+        if: needs.changes.outputs.desktop_package == 'true'
         with:
-          name: desktop-validation-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/bundle/
+          name: desktop-validation-${{ env.DESKTOP_TARGET }}
+          path: target/${{ env.DESKTOP_TARGET }}/release/bundle/
           if-no-files-found: error
           retention-days: 7
+
+  desktop-macos:
+    name: desktop (macos-14, aarch64-apple-darwin)
+    needs: changes
+    if: needs.changes.outputs.desktop_macos == 'true'
+    runs-on: macos-14
+    env:
+      DESKTOP_TARGET: aarch64-apple-darwin
+    steps: *desktop_steps
+
+  desktop-linux:
+    name: desktop (ubuntu-22.04, x86_64-unknown-linux-gnu)
+    needs: changes
+    if: needs.changes.outputs.desktop_linux == 'true'
+    runs-on: ubuntu-22.04
+    env:
+      DESKTOP_TARGET: x86_64-unknown-linux-gnu
+    steps: *desktop_steps
+
+  # Keep the required "build" check. Detection errors, canceled jobs, and missing checks fail it.
+  build:
+    needs: [changes, tests, android, native-tests, ios, desktop-windows, desktop-macos, desktop-linux]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require every selected check to pass
+        env:
+          CI_JOB_RESULTS: ${{ toJSON(needs) }}
+        run: node scripts/ci-changes.mjs check-results
