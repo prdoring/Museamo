@@ -140,7 +140,9 @@ function build(env) {
   const options = path.join(p.directory, 'ExportOptions.plist');
   writeFileSync(options, exportOptions(env.IOS_TEAM_ID, uuid, sha1));
   console.log(`Building Museamo ${version} (${number}) for iPhone.`);
-  run('xcodebuild', ['-project', 'ios/App/App.xcodeproj', '-scheme', 'App', '-configuration', 'Release', '-destination', 'generic/platform=iOS', '-archivePath', archive, '-derivedDataPath', path.join(p.directory, 'DerivedData'), `DEVELOPMENT_TEAM=${env.IOS_TEAM_ID}`, 'CODE_SIGN_STYLE=Manual', `CODE_SIGN_IDENTITY=${sha1}`, `PROVISIONING_PROFILE_SPECIFIER=${uuid}`, `MARKETING_VERSION=${version}`, `CURRENT_PROJECT_VERSION=${number}`, 'archive'], { visible: true });
+  // Only the App target consumes this setting. A global provisioning profile
+  // also reaches Swift package resource bundles, which cannot use a profile.
+  run('xcodebuild', ['-project', 'ios/App/App.xcodeproj', '-scheme', 'App', '-configuration', 'Release', '-destination', 'generic/platform=iOS', '-archivePath', archive, '-derivedDataPath', path.join(p.directory, 'DerivedData'), `DEVELOPMENT_TEAM=${env.IOS_TEAM_ID}`, 'CODE_SIGN_STYLE=Manual', `CODE_SIGN_IDENTITY=${sha1}`, `MUSEAMO_APP_PROVISIONING_PROFILE=${uuid}`, `MARKETING_VERSION=${version}`, `CURRENT_PROJECT_VERSION=${number}`, 'archive'], { visible: true });
   const info = readPlist(path.join(archive, 'Products', 'Applications', 'App.app', 'Info.plist'));
   if (info.CFBundleIdentifier !== bundleId || info.CFBundleVersion !== number || info.CFBundleShortVersionString !== version) throw new Error('Archived app identity or version does not match the requested TestFlight build.');
   run(process.execPath, ['scripts/generate-ios-assets.mjs', '--verify-app', path.join(archive, 'Products', 'Applications', 'App.app')], { visible: true });
