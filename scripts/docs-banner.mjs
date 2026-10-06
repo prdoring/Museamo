@@ -12,7 +12,7 @@ const letters = [...art.wordmark.letters].map(letter => {
 }).join("");
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" viewBox="0 0 1600 480" role="img" aria-labelledby="title desc">
 <title id="title">Museamo — a place for your thoughts</title>
-<desc id="desc">A warm lantern and custom Museamo wordmark on deep navy, with the words Capture. Keep. Rediscover. Android and Windows. Local first.</desc>
+<desc id="desc">A warm lantern and custom Museamo wordmark on deep navy, with the words Capture. Keep. Rediscover. Android, Windows, macOS, and iOS beta. Local first.</desc>
 <rect width="1600" height="480" fill="#12303A"/>
 <path d="M80 60H1520M80 420H1520" stroke="#D3922E" stroke-width="2"/>
 <g transform="translate(82 95) scale(.55)">${mark("#F4E7C7", "#D3922E")}</g>
@@ -20,8 +20,8 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" v
 <text x="310" y="332" font-family="Georgia,serif" font-size="40" fill="#F4E7C7">A place for your thoughts.</text>
 <text x="310" y="379" font-family="Arial,sans-serif" font-size="19" letter-spacing="2" fill="#D3922E">CAPTURE. KEEP. REDISCOVER.</text>
 <path d="M1160 105V380" stroke="#F4E7C7" stroke-opacity=".25"/>
-<text x="1220" y="172" font-family="Arial,sans-serif" font-size="20" fill="#F4E7C7" letter-spacing="2">ANDROID</text>
-<text x="1220" y="212" font-family="Arial,sans-serif" font-size="20" fill="#F4E7C7" letter-spacing="2">+ WINDOWS</text>
+<text x="1220" y="172" font-family="Arial,sans-serif" font-size="18" fill="#F4E7C7" letter-spacing="1">ANDROID + WINDOWS</text>
+<text x="1220" y="212" font-family="Arial,sans-serif" font-size="18" fill="#F4E7C7" letter-spacing="1">macOS + iOS BETA</text>
 <path d="M1220 246H1460" stroke="#D3922E" stroke-width="3"/>
 <text x="1220" y="291" font-family="Arial,sans-serif" font-size="17" fill="#F4E7C7">Your thoughts.</text>
 <text x="1220" y="325" font-family="Arial,sans-serif" font-size="17" fill="#F4E7C7">Your devices.</text>

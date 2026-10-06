@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="480" viewBox="0 0 1600 480" role="img" aria-labelledby="title desc">
 <title id="title">Museamo — a place for your thoughts</title>
-<desc id="desc">A warm lantern and custom Museamo wordmark on deep navy, with the words Capture. Keep. Rediscover. Android and Windows. Local first.</desc>
+<desc id="desc">A warm lantern and custom Museamo wordmark on deep navy, with the words Capture. Keep. Rediscover. Android, Windows, macOS, and iOS beta. Local first.</desc>
 <rect width="1600" height="480" fill="#12303A"/>
 <path d="M80 60H1520M80 420H1520" stroke="#D3922E" stroke-width="2"/>
 <g transform="translate(82 95) scale(.55)"><g fill="#F4E7C7"><path d="M54 115 57 72C61 26 101 12 160 12S259 26 263 72L266 115 245 111 242 74C239 43 210 31 160 31S81 43 78 74L75 111Z"/><path d="M115 98V80Q160 71 205 81V99Q160 93 115 98Z"/><path d="M91 105Q160 92 229 105L241 157Q160 144 79 157Z"/><path d="M97 172Q160 161 223 172V193Q160 182 97 193Z"/><path d="M63 118Q39 119 37 136L14 352Q12 379 48 403L75 382Q47 367 48 350L77 122Z"/><path d="M257 118Q281 120 283 137L306 351Q309 380 272 403L245 382Q274 365 272 349L243 122Z"/><path d="M84 384Q160 375 236 384L240 402Q160 395 80 402Z"/><path d="M55 416Q77 402 160 404Q245 401 266 416Q293 421 300 447H20Q25 422 55 416Z"/></g><path fill="#D3922E" fill-rule="evenodd" d="M158 198C176 223 215 270 224 307C238 356 204 380 167 382C121 387 91 353 95 317C97 282 121 253 158 198Z M148 382C135 353 133 335 145 313C162 286 187 265 186 239C197 280 179 298 164 324C151 347 144 365 148 382Z"/></g>
@@ -8,8 +8,8 @@
 <text x="310" y="332" font-family="Georgia,serif" font-size="40" fill="#F4E7C7">A place for your thoughts.</text>
 <text x="310" y="379" font-family="Arial,sans-serif" font-size="19" letter-spacing="2" fill="#D3922E">CAPTURE. KEEP. REDISCOVER.</text>
 <path d="M1160 105V380" stroke="#F4E7C7" stroke-opacity=".25"/>
-<text x="1220" y="172" font-family="Arial,sans-serif" font-size="20" fill="#F4E7C7" letter-spacing="2">ANDROID</text>
-<text x="1220" y="212" font-family="Arial,sans-serif" font-size="20" fill="#F4E7C7" letter-spacing="2">+ WINDOWS</text>
+<text x="1220" y="172" font-family="Arial,sans-serif" font-size="18" fill="#F4E7C7" letter-spacing="1">ANDROID + WINDOWS</text>
+<text x="1220" y="212" font-family="Arial,sans-serif" font-size="18" fill="#F4E7C7" letter-spacing="1">macOS + iOS BETA</text>
 <path d="M1220 246H1460" stroke="#D3922E" stroke-width="3"/>
 <text x="1220" y="291" font-family="Arial,sans-serif" font-size="17" fill="#F4E7C7">Your thoughts.</text>
 <text x="1220" y="325" font-family="Arial,sans-serif" font-size="17" fill="#F4E7C7">Your devices.</text>
