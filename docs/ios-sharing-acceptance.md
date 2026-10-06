@@ -5,8 +5,8 @@ Status: implementation candidate, October 6, 2026. Hardware acceptance has **not
 ## Candidate identity
 
 - Pull request: [iPhone sharing #13](https://github.com/prdoring/Museamo/pull/13).
-- Implementation commit: `a650c9021c444a86c82d103c7a51381dfbcde184`; required results are in [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
-- Automated Mac baseline: `cec154ff1e45f2bc5923d60cfd1d4b9483541d16`, [20 Swift tests, simulator build and unsigned iPhone archive passed](https://github.com/prdoring/Museamo/actions/runs/37532863342/job/112506714451), October 6, 2026.
+- Tested implementation commit: `a62a102688b1045f09307c16f444ee170a579abb`; [all automated platform checks passed](https://github.com/prdoring/Museamo/actions/runs/37534986721). Required PR-head results are in [PR checks](https://github.com/prdoring/Museamo/pull/13/checks).
+- Automated iPhone results: [21 Swift tests, simulator build, unsigned iPhone archive and native capture/relaunch UI test passed](https://github.com/prdoring/Museamo/actions/runs/37534986721/job/112513908047), October 6, 2026. UI device: iPhone 16 Pro / iOS 18.5 simulator. The run's `ios-persistence-ui-results` artifact contains the result bundle and screenshots, retained for seven days.
 - Physical tested commit: pending signed candidate and owner record.
 - TestFlight version/build: pending signed candidate.
 - iPhone model/iOS: pending owner record.
