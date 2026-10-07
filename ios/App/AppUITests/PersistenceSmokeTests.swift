@@ -91,7 +91,7 @@ final class PersistenceSmokeTests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: timeout))
         field.tap()
         field.typeText(name)
-        tap(button("Save tag"))
+        tap(button("Create tag"))
         XCTAssertTrue(button("New tag").waitForExistence(timeout: timeout), "The tag did not save.")
     }
 

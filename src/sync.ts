@@ -3,6 +3,8 @@ import type { Entry, Tag } from "./data";
 export interface SyncSummary { thoughts: number; tags: number; attachments: number; attachmentBytes: number }
 export interface SyncDevice { deviceId: string; name: string; address?: string; status?: string; lastSync?: number; removalPending?: boolean }
 export interface SyncState {
+  deviceId?: string;
+  name?: string;
   enabled: boolean;
   phase: "idle" | "pairing" | "merge" | "syncing" | "error";
   address?: string;

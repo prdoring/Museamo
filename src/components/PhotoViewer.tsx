@@ -119,8 +119,9 @@ export function PhotoViewer({ images, initial, close }: { images: (Attachment | 
         } else {
           update(bounded(current.current));
           if (tap) {
-            const point = { x: e.clientX, y: e.clientY }, now = Date.now();
-            if (now - lastTap.current.time < 300 && distance(point, lastTap.current.point) < 30) { zoom(point); lastTap.current.time = 0; }
+            // Use touch time so a busy WebView cannot stretch or compress a double tap.
+            const point = { x: e.clientX, y: e.clientY }, now = e.timeStamp;
+            if (lastTap.current.time > 0 && now - lastTap.current.time < 300 && distance(point, lastTap.current.point) < 30) { zoom(point); lastTap.current.time = 0; }
             else lastTap.current = { time: now, point };
           }
         }

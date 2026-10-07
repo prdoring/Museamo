@@ -6,5 +6,6 @@ import './styles.css';
 import './paper.css';
 import './desktop.css';
 import './motion.css';
+import './settings.css';
 document.documentElement.dataset.platform = platform;
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

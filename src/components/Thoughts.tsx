@@ -7,6 +7,7 @@ import { type Attachment } from "../media";
 import { PaperIcon } from "./PaperIcon";
 import { ChecklistToggle } from "./Checklist";
 import { ChecklistMark, SharedMark, TagSharingSettings } from "./Sharing";
+import { SettingsFailure, settingsError } from "./SettingsControls";
 import { FormattedText, copyFormatted } from "./FormattedText";
 import { type Format } from "../formatting";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -42,10 +43,12 @@ export function Sheet({
   title,
   children,
   close,
+  closeDisabled = false,
 }: {
   title: string;
   children: ReactNode;
   close: () => void;
+  closeDisabled?: boolean;
 }) {
   const exiting = useExiting();
   const ref = useRef<HTMLElement>(null);
@@ -54,7 +57,8 @@ export function Sheet({
   const exitingRef = useRef(exiting);
   exitingRef.current = exiting;
   const closeRef = useRef(close);
-  closeRef.current = exiting ? () => {} : close;
+  closeRef.current = exiting || closeDisabled ? () => {} : close;
+  useLayoutEffect(() => { ref.current?.querySelector<HTMLElement>(".sheet-heading h2")?.focus({ preventScroll: true }); }, [title]);
   useEffect(() => {
     const unlock = lockOverlay(trigger.current);
     const focusable = () =>
@@ -62,9 +66,9 @@ export function Sheet({
         ref.current?.querySelectorAll<HTMLElement>(
           'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"], [contenteditable="true"]',
         ) || [],
-      );
+      ).filter(element => !element.closest("[hidden]"));
     (
-      ref.current?.querySelector<HTMLElement>('[autofocus], [contenteditable="true"], textarea, input') ||
+      focusable().find(element => element.matches('[autofocus], [contenteditable="true"], textarea, input')) ||
       focusable()[0]
     )?.focus();
     const key = (e: KeyboardEvent) => {
@@ -105,7 +109,7 @@ export function Sheet({
       inert={exiting}
       aria-hidden={exiting || undefined}
       onClick={(e) => {
-        if (e.target === e.currentTarget) close();
+        if (e.target === e.currentTarget) closeRef.current();
       }}
     >
       <section
@@ -116,8 +120,8 @@ export function Sheet({
         aria-label={title}
       >
         <div className="sheet-heading">
-          <h2>{title}</h2>
-          <button className="icon-button" aria-label="Close" onClick={close}>
+          <h2 tabIndex={-1}>{title}</h2>
+          <button className="icon-button" aria-label="Close" disabled={closeDisabled} onClick={close}>
             <PaperIcon name="close" size={21} />
           </button>
         </div>
@@ -736,38 +740,55 @@ export function TagEditor({
 }) {
   const [name, setName] = useState(tag === "new" ? "" : tag.name),
     [type, setType] = useState<Tag["type"]>(tag === "new" ? "standard" : tag.type),
-    [confirm, setConfirm] = useState(false),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState({ name: tag === "new" ? "" : tag.name, type: tag === "new" ? "standard" : tag.type });
+  const [page, setPage] = useState<"edit" | "sharing" | "discard" | "saveSharing" | "delete">("edit");
+  const [sharingBusy, setSharingBusy] = useState(false), [backRequested, setBackRequested] = useState(0), [menuOpen, setMenuOpen] = useState(false), [created, setCreated] = useState(false);
+  const menuAnchor = useRef<HTMLButtonElement>(null), pending = useRef(false);
   const [sharing, setSharing] = useState(tag === "new" ? undefined : tag.sharing);
   const readOnly = !!sharing && (sharing.role === "member" || isDesktop);
-  async function run(remove = false) {
-    setBusy(true);
+  const dirty = name !== saved.name || type !== saved.type;
+  const locked = busy || sharingBusy;
+  function requestClose() {
+    if (locked) return;
+    setMenuOpen(false);
+    if (page === "sharing") { setBackRequested(value => value + 1); return; }
+    if (page !== "edit") { setPage("edit"); return; }
+    if (dirty && !readOnly) setPage("discard"); else close();
+  }
+  async function save(next: "close" | "sharing") {
+    if (pending.current || locked || readOnly || !name.trim()) return;
+    pending.current = true; setBusy(true); setError("");
     try {
-      if (remove && tag !== "new") await bridge.deleteTag({ id: tag.id });
-      else
-        await bridge.saveTag({ id: tag === "new" ? undefined : tag.id, name, type });
-      await done();
-      close();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
+      if (!(tag === "new" && created)) await bridge.saveTag({ id: tag === "new" ? undefined : tag.id, name: name.trim(), type });
+      if (tag === "new") setCreated(true);
+      setName(name.trim()); setSaved({ name: name.trim(), type });
+      try { await done(); } catch (failure) { setError(`Tag saved, but the library could not refresh. ${settingsError(failure)}`); setPage(next === "sharing" ? "sharing" : "edit"); return; }
+      if (next === "sharing") setPage("sharing"); else close();
+    } catch (failure) { setError(settingsError(failure)); }
+    finally { pending.current = false; setBusy(false); }
+  }
+  async function remove() {
+    if (tag === "new" || sharing || pending.current || locked) return;
+    pending.current = true; setBusy(true); setError("");
+    try { await bridge.deleteTag({ id: tag.id }); try { await done(); } finally { close(); } }
+    catch (failure) { setError(settingsError(failure)); }
+    finally { pending.current = false; setBusy(false); }
   }
   return (
     <Sheet
-      title={tag === "new" ? "New tag" : "Edit tag"}
-      close={() => {
-        if (!busy) close();
-      }}
+      title={page === "sharing" ? "Sharing" : page === "discard" ? "Save changes?" : page === "saveSharing" ? "Save before sharing" : page === "delete" ? "Delete tag?" : tag === "new" ? "New tag" : "Tag settings"}
+      close={requestClose}
     >
+      <div className="tag-settings" hidden={page !== "edit"}>
+      {tag !== "new" && !sharing && <div className="tag-settings-menu"><button ref={menuAnchor} className="icon-button" aria-label="Tag actions" aria-haspopup="menu" aria-expanded={menuOpen} disabled={locked} onClick={() => setMenuOpen(!menuOpen)}><MoreHorizontal size={22} /></button>{menuOpen && <ActionMenu anchor={menuAnchor} label="Tag actions" close={() => setMenuOpen(false)}><button className="danger" onClick={() => { setMenuOpen(false); setError(""); setPage("delete"); }}><Trash2 size={18} />Delete tag</button></ActionMenu>}</div>}
       <label className="field-label">
         Tag name
         <input
-          autoFocus
+          autoFocus={!readOnly}
           maxLength={80}
-          disabled={readOnly || busy}
+          disabled={readOnly || locked || created}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -779,42 +800,20 @@ export function TagEditor({
         aria-checked={type === "checklist"}
         aria-label="Checklist"
         aria-describedby="checklist-setting-description"
-        disabled={busy || readOnly}
+        disabled={locked || readOnly || created}
         onClick={() => setType(type === "checklist" ? "standard" : "checklist")}
       >
         <span><strong>Checklist</strong><span id="checklist-setting-description">Check off thoughts with this tag.</span></span>
         <span className="switch-track" aria-hidden="true"><span className="switch-thumb" /></span>
       </button>
-      {tag !== "new" && <TagSharingSettings tag={tag} changed={done} close={close} disabled={name !== tag.name || type !== tag.type} stateChanged={state => setSharing(state.collectionId ? { collectionId: state.collectionId, role: state.role ?? "member", status: state.status ?? "waiting" } : undefined)} />}
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      {confirm && (
-        <p>
-          Remove this tag from thoughts, drafts, and widget defaults? Your
-          thoughts remain. A picker using it switches to No tag.
-        </p>
-      )}
-      <div className="action-row">
-        {tag !== "new" && !sharing && (
-          <button
-            disabled={busy}
-            className="secondary danger"
-            onClick={() => (confirm ? void run(true) : setConfirm(true))}
-          >
-            {confirm ? "Confirm deletion" : "Delete tag"}
-          </button>
-        )}
-        <button
-          disabled={busy || !name.trim() || readOnly}
-          className="primary"
-          onClick={() => void run()}
-        >
-          Save tag
-        </button>
+      {readOnly && <p className="muted">{isDesktop ? "Shared tag names and Checklist settings are managed on your phone." : "The creator manages this tag’s name and Checklist setting."}</p>}
       </div>
+      {tag !== "new" && <div hidden={page !== "edit" && page !== "sharing"}><TagSharingSettings tag={{ ...tag, name: saved.name, type: saved.type }} changed={done} close={() => setPage("edit")} expanded={page === "sharing"} requestOpen={() => { setError(""); setPage(dirty && !readOnly ? "saveSharing" : "sharing"); }} backRequested={backRequested} busyChanged={setSharingBusy} stateChanged={state => setSharing(state.collectionId ? { collectionId: state.collectionId, role: state.role ?? "member", status: state.status ?? "waiting" } : undefined)} /></div>}
+      {page === "saveSharing" && <><p>Save your changes to this tag before opening sharing.</p><div className="settings-actions"><button className="secondary" disabled={locked} onClick={() => setPage("edit")}>Keep editing</button><button className="primary" disabled={locked || !name.trim()} onClick={() => void save("sharing")}>{busy ? "Saving…" : "Save and continue"}</button></div></>}
+      {page === "discard" && <><p>Your changes to {name.trim() ? `#${name.trim()}` : "this tag"} haven’t been saved.</p><div className="settings-actions"><button className="secondary" disabled={locked} onClick={() => setPage("edit")}>Keep editing</button><button className="secondary" disabled={locked} onClick={close}>Discard changes</button><button className="primary" disabled={locked || !name.trim()} onClick={() => void save("close")}>{busy ? "Saving…" : "Save changes"}</button></div></>}
+      {page === "delete" && <><p>Remove #{saved.name} from thoughts, drafts, and widget defaults? Your thoughts remain. A picker using this tag switches to No tag.</p><div className="settings-actions"><button className="secondary" disabled={locked} onClick={() => setPage("edit")}>Keep tag</button><button className="primary danger" disabled={locked} onClick={() => void remove()}>{busy ? "Deleting…" : "Delete tag"}</button></div></>}
+      <SettingsFailure error={error} />
+      {page === "edit" && <div className="settings-actions">{readOnly ? <button className="primary" disabled={locked} onClick={close}>Done</button> : <><button className="secondary" disabled={locked} onClick={requestClose}>Cancel</button><button disabled={locked || !name.trim()} className="primary" onClick={() => void save("close")}>{busy ? "Saving…" : created ? "Retry library refresh" : tag === "new" ? "Create tag" : "Save tag"}</button></>}</div>}
     </Sheet>
   );
 }

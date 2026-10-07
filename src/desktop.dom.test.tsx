@@ -20,6 +20,7 @@ vi.mock("./data", async importOriginal => ({ ...(await importOriginal<typeof imp
     setStartupEnabled: fake.setStartup,
     library: async () => ({ tags: [], profiles: [] }),
     queryEntries: async () => ({ entries: [], hasMore: false }),
+    getSyncState: async () => ({ enabled: true, phase: "idle", devices: [], nearby: [] }),
     addListener: async () => ({ remove: async () => {} }),
   },
 }));
@@ -55,7 +56,7 @@ afterEach(() => {
 });
 const render = async (content: React.ReactNode) => { await act(async () => root.render(content)); };
 const runtime = (info: DesktopInfo): DesktopRuntimeState => ({ status: "ready", info });
-const settings = (state: DesktopRuntimeState) => <DesktopRuntime.Provider value={state}><Settings library={{ tags: [], profiles: [] }} report={() => {}} run={async fn => { await fn(); }} refresh={() => {}} /></DesktopRuntime.Provider>;
+const settings = (state: DesktopRuntimeState) => <DesktopRuntime.Provider value={state}><Settings section="behavior" library={{ tags: [], profiles: [] }} report={() => {}} refresh={() => {}} /></DesktopRuntime.Provider>;
 
 it("loads native capabilities once under StrictMode and shares them with controls and settings", async () => {
   await render(<StrictMode><App /></StrictMode>);
@@ -64,6 +65,8 @@ it("loads native capabilities once under StrictMode and shares them with control
   expect(document.documentElement.dataset.windowControls).toBe("native");
   const openSettings = host.querySelector<HTMLButtonElement>(".desktop-settings")!;
   await act(async () => openSettings.click());
+  expect(fake.startup).not.toHaveBeenCalled();
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-setting="behavior"]')!.click());
   expect(host.querySelector(".settings")?.textContent).toContain("macOS");
   expect(host.querySelector(".settings")?.textContent).toContain("Dock");
   expect(fake.desktopInfo).toHaveBeenCalledTimes(1);

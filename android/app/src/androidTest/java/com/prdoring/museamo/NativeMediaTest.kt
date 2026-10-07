@@ -118,7 +118,19 @@ class NativeMediaTest {
                 touch(0, listOf(.4f to .5f)); touch(5 or (1 shl 8), listOf(.4f to .5f, .6f to .5f))
                 touch(2, listOf(.2f to .5f, .8f to .5f)); touch(6 or (1 shl 8), listOf(.2f to .5f, .8f to .5f)); touch(1, listOf(.2f to .5f))
                 assertEquals("true", js(scenario, "new DOMMatrix(getComputedStyle(document.querySelector('.photo-stage img')).transform).a > 2"))
-                repeat(2) { touch(0, listOf(.5f to .5f)); touch(1, listOf(.5f to .5f)) }
+                // Send one recorded double tap. Separate onActivity calls can
+                // exceed the gesture interval on a busy CI emulator.
+                scenario.onActivity { activity ->
+                    val web = activity.bridge.webView
+                    val start = android.os.SystemClock.uptimeMillis() - 140
+                    for (offset in listOf(0L, 100L)) {
+                        for ((action, duration) in listOf(android.view.MotionEvent.ACTION_DOWN to 0L, android.view.MotionEvent.ACTION_UP to 40L)) {
+                            val event = android.view.MotionEvent.obtain(start + offset, start + offset + duration, action, web.width * .5f, web.height * .5f, 0)
+                            event.source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+                            web.dispatchTouchEvent(event); event.recycle()
+                        }
+                    }
+                }
                 until(scenario, "new DOMMatrix(getComputedStyle(document.querySelector('.photo-stage img')).transform).a", "1")
                 androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()?.let { bitmap ->
                     File(context.getExternalFilesDir(null), "photo-viewer.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }

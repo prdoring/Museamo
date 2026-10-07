@@ -27,23 +27,20 @@ class WidgetConfigActivity : NativeScreen() {
         setResult(RESULT_CANCELED, Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId))
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID && intent.getStringExtra("profileId") == null) { finish(); return }
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        title("Make this widget yours")
-        note("A shortcut for sending yourself thoughts. Everything saves to Museamo on this phone.")
-        body.addView(label("Homescreen preview", 14))
+        title("Widget settings")
+        body.addView(label("Preview", 14))
 
         preview = label("Message yourself…", 17).apply { setPadding(dp(16), dp(16), dp(16), dp(16)); typeface = android.graphics.Typeface.DEFAULT; background = PaperSurface(this@WidgetConfigActivity) }
         body.addView(preview)
-        note("Tap the message area to write. The ↗ button opens the app.")
-        body.addView(label("Label on your homescreen", 17))
-        note("For example: Shower thoughts or Words to remember.")
+        body.addView(label("Widget name", 17))
         labelInput = EditText(this).apply { hint = "Widget name"; contentDescription = "Widget name"; setSingleLine(true); filters = arrayOf(android.text.InputFilter.LengthFilter(80)) }
         body.addView(labelInput)
         labelInput.typeface = font; styleField(labelInput)
         labelInput.addTextChangedListener(object : android.text.TextWatcher { override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}; override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { updateTags() }; override fun afterTextChanged(s: android.text.Editable?) {} })
-        body.addView(label("How should tags work?", 17).apply { setPadding(0, dp(20), 0, dp(8)) })
+        body.addView(label("Tags for new thoughts", 17).apply { setPadding(0, dp(20), 0, dp(8)) })
         modes = RadioGroup(this)
-        modes.addView(RadioButton(this).apply { id = R.id.mode_fixed; text = "Use the same tags each time"; typeface = font; minHeight = dp(48) })
-        modes.addView(RadioButton(this).apply { id = R.id.mode_picker; text = "Choose a tag on the widget"; typeface = font; minHeight = dp(48) })
+        modes.addView(RadioButton(this).apply { id = R.id.mode_fixed; text = "Fixed tags"; typeface = font; minHeight = dp(48) })
+        modes.addView(RadioButton(this).apply { id = R.id.mode_picker; text = "Tag picker"; typeface = font; minHeight = dp(48) })
         modes.check(R.id.mode_fixed); body.addView(modes)
         modeHelp = label("", 14).apply { setTextColor(androidx.core.content.ContextCompat.getColor(this@WidgetConfigActivity, R.color.widget_muted)); setPadding(0, dp(8), 0, dp(12)) }
         body.addView(modeHelp)
@@ -90,7 +87,7 @@ class WidgetConfigActivity : NativeScreen() {
     private fun applyProfile(p: ProfileRow) { labelInput.setText(p.label); selected = ids(p.tagIds).toMutableSet(); pickerTag = p.selectedTagId; modes.check(if (p.mode == "picker") R.id.mode_picker else R.id.mode_fixed); updateTags() }
     private fun updateTags() {
         if (!::tagsButton.isInitialized) return
-        modeHelp.text = if (modes.checkedRadioButtonId == R.id.mode_picker) "Adds a tag picker to the widget. Choose one tag on your homescreen before writing. You can add or change tags in the composer." else "New thoughts start with the tags below. Choose none for a general-purpose widget. You can still change tags while writing."
+        modeHelp.text = if (modes.checkedRadioButtonId == R.id.mode_picker) "Choose a tag on your home screen before writing." else "Start with these tags. You can change them while writing."
         val startingTag = tags.find { it.id == pickerTag }
         // Copy the value, not the Editable's watcher spans, into the preview.
         preview.text = android.text.TextUtils.concat(labelInput.text.toString(), if (modes.checkedRadioButtonId == R.id.mode_picker) android.text.TextUtils.concat("     # ", startingTag?.displayLabel(this) ?: "No tag", " ▾") else "", "     ↗")
@@ -100,7 +97,7 @@ class WidgetConfigActivity : NativeScreen() {
     }
     private fun chooseTags() {
         if (modes.checkedRadioButtonId == R.id.mode_picker) {
-            AlertDialog.Builder(this).setTitle("Tag selected when this widget is added").setSingleChoiceItems((listOf<CharSequence>("No tag") + tags.map { it.displayLabel(this) }).toTypedArray(), tags.indexOfFirst { it.id == pickerTag } + 1) { dialog, index -> pickerTag = if (index == 0) null else tags[index - 1].id; updateTags(); dialog.dismiss() }.setNegativeButton("Cancel", null).show()
+            AlertDialog.Builder(this).setTitle("Starting tag").setSingleChoiceItems((listOf<CharSequence>("No tag") + tags.map { it.displayLabel(this) }).toTypedArray(), tags.indexOfFirst { it.id == pickerTag } + 1) { dialog, index -> pickerTag = if (index == 0) null else tags[index - 1].id; updateTags(); dialog.dismiss() }.setNegativeButton("Cancel", null).show()
         } else {
             val draftTags = selected.toMutableSet()
             AlertDialog.Builder(this).setTitle("Tags for new thoughts").setMultiChoiceItems(tags.map { it.displayLabel(this) }.toTypedArray(), tags.map { it.id in selected }.toBooleanArray()) { _, index, checked -> if (checked) draftTags.add(tags[index].id) else draftTags.remove(tags[index].id) }.setPositiveButton("Done") { _, _ -> selected = draftTags; updateTags() }.setNegativeButton("Cancel", null).setNeutralButton("No tag") { _, _ -> selected.clear(); updateTags() }.show()

@@ -58,12 +58,16 @@ const expectNoUnsupportedCalls = () => { for (const method of Object.values(fake
 
 it("shows linking and Recovery while keeping automatic capture, widgets, and backups unavailable", async () => {
   await render(<Settings library={{ tags: [], profiles: [] }} report={() => {}} run={async fn => { await fn(); }} refresh={() => {}} />);
-  expect(fake.listRecovery).toHaveBeenCalledOnce();
-  expect(host.textContent).toContain("Nothing in Recovery.");
+  expect(fake.listRecovery).not.toHaveBeenCalled();
   for (const label of ["Post locations", "Widgets", "Export backup", "Import backup"]) expect(host.textContent).not.toContain(label);
-  expect(host.textContent).toContain("Backup export and import are not available yet.");
   expect(host.textContent).not.toContain("export a backup first");
   expect(host.textContent).toContain("Linked devices");
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-setting="recovery"]')!.click());
+  expect(fake.listRecovery).toHaveBeenCalledOnce();
+  expect(host.textContent).toContain("Nothing in Recovery.");
+  await act(async () => host.querySelector<HTMLButtonElement>(".settings-back")!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>('[data-setting="about"]')!.click());
+  expect(host.textContent).toContain("Backup export and import are not available yet on iPhone.");
   expectNoUnsupportedCalls();
 });
 it("exposes saved maps, sharing, and pending originals", async () => {
