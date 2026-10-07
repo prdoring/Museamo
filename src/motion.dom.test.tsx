@@ -47,6 +47,31 @@ it("keeps an open photo ready through metadata refresh and hides it immediately 
   act(() => vi.advanceTimersByTime(200)); expect(document.querySelector('.photo-lightbox')).toBeNull();
 });
 
+it("recognizes double taps by touch timestamps even when event handling is delayed", async () => {
+  await act(async () => root.render(<PhotoViewer images={[{ kind: "image", url: "https://example.com/photo.png", source: "https://example.com/photo.png" }]} initial={0} close={() => {}} />));
+  const stage = document.querySelector<HTMLDivElement>(".photo-stage")!;
+  const image = document.querySelector<HTMLImageElement>(".photo-stage img")!;
+  stage.setPointerCapture = vi.fn();
+  Object.defineProperties(stage, { clientWidth: { value: 400 }, clientHeight: { value: 80 } });
+  Object.defineProperties(image, { naturalWidth: { value: 600 }, naturalHeight: { value: 800 } });
+  const tap = (time: number) => {
+    for (const [type, offset] of [["pointerdown", 0], ["pointerup", 40]] as const) {
+      const event = new Event(type, { bubbles: true });
+      Object.defineProperties(event, { pointerId: { value: 1 }, clientX: { value: 200 }, clientY: { value: 40 }, timeStamp: { value: time + offset } });
+      act(() => stage.dispatchEvent(event));
+    }
+  };
+  tap(1000);
+  // Queued touches still form a double tap when rendering delays delivery.
+  act(() => vi.advanceTimersByTime(500)); tap(1100);
+  expect(image.style.transform).toContain("scale(2.5)");
+  tap(2000); act(() => vi.advanceTimersByTime(500)); tap(2100);
+  expect(image.style.transform).toContain("scale(1)");
+  // Touches more than 300ms apart must stay separate even when delivered together.
+  tap(3000); tap(3400);
+  expect(image.style.transform).toContain("scale(1)");
+});
+
 describe("list presence and interrupted updates", () => {
   it("keeps the last departing post in place before showing the empty surface", () => {
     act(() => root.render(<MotionList scope="stream" items={items("last")} empty={<p>Empty library</p>} />));
