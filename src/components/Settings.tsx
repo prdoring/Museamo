@@ -1,197 +1,154 @@
-import { useEffect, useState } from "react";
-import { PaperIcon } from "./PaperIcon";
+import { useEffect, useRef, useState } from "react";
 import { Download, Upload } from "lucide-react";
-import { bridge, preview, type Library } from "../data";
+import { bridge, preview, type Library, type Tag } from "../data";
 import { isPreview, isDesktop, capabilities, desktopName, desktopCloseDescription } from "../platform";
-import { useDesktopRuntime } from "./Desktop";
+import { useDesktopLayout, useDesktopRuntime } from "./Desktop";
 import { Devices } from "./Devices";
 import { Recovery } from "./Recovery";
-export function Settings({
-  library,
-  report,
-  run,
-  refresh,
-}: {
-  library: Library;
-  report: (s: string) => void;
-  run: (fn: () => Promise<unknown>) => Promise<void>;
-  refresh: () => void;
+import { SearchField, TagList } from "./LibraryViews";
+import { SettingRow, SettingsBack, SettingsFailure, settingsError, useSettingsResource } from "./SettingsControls";
+import { createDevicePreview } from "../devicePreview";
+
+export type SettingsSection = "home" | "tags" | "recovery" | "devices" | "backup" | "location" | "widgets" | "behavior" | "about" | "preview";
+export const settingsTitles: Record<SettingsSection, string> = { home: "Settings", tags: "Manage tags", recovery: "Recovery", devices: "Linked devices", backup: "Backup", location: "Post locations", widgets: "Widgets", behavior: "App behavior", about: "About & privacy", preview: "Preview tools" };
+const demoDevices = createDevicePreview();
+
+export function Settings({ library, report, refresh, section: controlledSection, onSectionChange, editTag, openTag, tagQuery, onTagQueryChange }: {
+  library: Library; report: (s: string) => void; run?: (fn: () => Promise<unknown>) => Promise<void>; refresh: () => void;
+  section?: SettingsSection; onSectionChange?: (section: SettingsSection) => void; editTag?: (tag: Tag | "new") => void; openTag?: (id: string) => void;
+  tagQuery?: string; onTagQueryChange?: (query: string) => void;
 }) {
-  const [locationEnabled, setLocationEnabled] = useState(false);
-  const runtime = useDesktopRuntime();
-  const desktopInfo = runtime.status === "ready" ? runtime.info : undefined;
-  const [startupEnabled, setStartupEnabled] = useState(false);
-  const [startupStatus, setStartupStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [startupUpdating, setStartupUpdating] = useState(false);
-  const [startupAttempt, setStartupAttempt] = useState(0);
+  const desktopLayout = useDesktopLayout();
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1100px)").matches);
+  const [localSection, setLocalSection] = useState<SettingsSection>("home");
+  const section = controlledSection ?? localSection;
+  const selected = section === "home" && desktopLayout && wide ? "tags" : section;
+  const change = (next: SettingsSection) => { if (onSectionChange) onSectionChange(next); else setLocalSection(next); };
+  const [localQuery, setLocalQuery] = useState("");
+  const query = tagQuery ?? localQuery, setQuery = onTagQueryChange ?? setLocalQuery;
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousSection = useRef(selected);
+  const demo = demoDevices;
+  const deviceApi = isPreview ? demo : bridge;
+  const devices = useSettingsResource(() => deviceApi.getSyncState(), { enabled: capabilities.sync || isPreview, poll: true });
   useEffect(() => {
-    if (capabilities.automaticLocation) void run(async () => setLocationEnabled((await bridge.locationSettings()).enabled));
+    const media = window.matchMedia("(min-width: 1100px)");
+    const update = () => setWide(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
   }, []);
   useEffect(() => {
-    if (!isDesktop || !desktopInfo?.startupSupported) return;
-    let disposed = false;
-    setStartupStatus("loading");
-    void bridge.getStartupSettings().then(settings => {
-      if (disposed) return;
-      setStartupEnabled(settings.enabled);
-      setStartupStatus("ready");
-    }).catch(() => { if (!disposed) setStartupStatus("error"); });
-    return () => { disposed = true; };
-  }, [desktopInfo?.startupSupported, startupAttempt]);
-  return (
-    <div className="settings">
-      {capabilities.sync && <Devices />}
-      {capabilities.recovery && <Recovery report={report} />}
-      {isDesktop && <section>
-        <h2>{desktopInfo ? desktopName(desktopInfo) : "Desktop"}</h2>
-        {runtime.status === "loading" && <p>Loading desktop options...</p>}
-        {runtime.status === "error" && <p>Desktop options could not be loaded. Use Retry desktop options above.</p>}
-        {desktopInfo && <>
-          {desktopInfo.startupSupported ? <>
-            <label className="startup-setting"><input type="checkbox" checked={startupEnabled} disabled={startupStatus !== "ready" || startupUpdating} onChange={e => {
-              const enabled = e.target.checked;
-              setStartupUpdating(true);
-              void run(async () => {
-                try { setStartupEnabled((await bridge.setStartupEnabled({ enabled })).enabled); }
-                finally { setStartupUpdating(false); }
-              });
-            }} /> Start Museamo when I sign in</label>
-            {startupStatus === "loading" && <p className="muted">Checking sign-in settings...</p>}
-            {startupStatus === "error" && <p role="alert">Sign-in settings could not be loaded. <button onClick={() => setStartupAttempt(attempt => attempt + 1)}>Retry sign-in settings</button></p>}
-          </> : <p className="muted">Starting at sign-in is unavailable in this app session.</p>}
-          <p>{desktopCloseDescription(desktopInfo)}</p>
-        </>}
+    if (selected !== previousSection.current) {
+      const previous = previousSection.current; previousSection.current = selected;
+      if (selected === "home") document.querySelector<HTMLElement>(`[data-setting="${previous}"]`)?.focus();
+      else heading.current?.focus({ preventScroll: true });
+    }
+  }, [selected]);
+  const groups = [
+    { title: "Organize your library", items: [{ id: "tags", detail: `${library.tags.length} ${library.tags.length === 1 ? "tag" : "tags"}` }, ...(capabilities.recovery ? [{ id: "recovery", detail: "Deleted thoughts and saved versions" }] : [])] },
+    { title: "Devices and backups", items: [...(capabilities.sync || isPreview ? [{ id: "devices", detail: isPreview ? "Simulated devices" : devices.value ? `${devices.value.devices.length} linked · ${devices.value.phase === "syncing" ? "Syncing" : devices.value.enabled ? "Local network" : "Needs attention"}` : "Your own devices" }] : []), ...(capabilities.backups ? [{ id: "backup", detail: "Export or import your library" }] : [])] },
+    { title: "This device", items: [...(capabilities.automaticLocation ? [{ id: "location", detail: "Location for new thoughts" }] : []), ...(capabilities.widgets ? [{ id: "widgets", detail: `${library.profiles.length} widget profiles` }] : []), ...(isDesktop ? [{ id: "behavior", detail: "Startup and window behavior" }] : [])] },
+    { title: "Information", items: [{ id: "about", detail: "Local storage and privacy" }, ...(isPreview ? [{ id: "preview", detail: "Temporary examples and test states" }] : [])] },
+  ];
+  return <div className="settings settings-workspace" data-section={selected} data-controlled={!!onSectionChange}>
+    <nav className="settings-topics" aria-label="Settings topics" hidden={selected !== "home" && !(desktopLayout && wide)}>
+      {groups.filter(group => group.items.length).map(group => <div className="settings-topic-group" key={group.title}>
+        <h2>{group.title}</h2>
+        {group.items.map(item => <button key={item.id} className="setting-row" data-setting={item.id} aria-current={selected === item.id ? "page" : undefined} onClick={() => change(item.id as SettingsSection)}>
+          <span className="setting-row-copy"><strong>{settingsTitles[item.id as SettingsSection]}</strong><span>{item.detail}</span></span><span aria-hidden="true">›</span>
+        </button>)}
+      </div>)}
+    </nav>
+    <div className="settings-content" hidden={selected === "home"}>
+      {!onSectionChange && !(desktopLayout && wide) && <SettingsBack onClick={() => change("home")}>Settings</SettingsBack>}
+      <h2 className="settings-page-title" ref={heading} tabIndex={-1}>{settingsTitles[selected]}</h2>
+      {selected === "tags" && <><SearchField tags query={query} change={setQuery} /><TagList manage tags={library.tags} query={query} open={openTag ?? (() => {})} edit={editTag ?? (() => {})} changed={async () => { refresh(); }} /></>}
+      {selected === "recovery" && capabilities.recovery && <Recovery report={report} />}
+      {(capabilities.sync || isPreview) && <Devices active={selected === "devices"} controller={devices} api={deviceApi} demo={isPreview} />}
+      {selected === "backup" && capabilities.backups && <BackupSettings refresh={refresh} report={report} />}
+      {selected === "location" && capabilities.automaticLocation && <LocationSettings />}
+      {selected === "behavior" && isDesktop && <DesktopSettings />}
+      {selected === "widgets" && capabilities.widgets && <WidgetSettings library={library} />}
+      {selected === "about" && <section className="settings-page"><p>Museamo · a place for your thoughts.</p>
+        <SettingRow title="Saved on this device" detail="Thoughts, drafts, and original attachments live in your local library." children={<span />} />
+        <SettingRow title="Your linked devices" detail="Saved content syncs directly over your local network. No account or cloud sync." children={<span />} />
+        <details className="settings-help"><summary>Privacy and external services</summary><p>Linked media loads from its host when visible. Maps request tiles from OpenStreetMap. Address lookup may send coordinates to your device’s geocoding service.</p><p>Sharing a tag also shares its saved locations and attachments with its members.</p></details>
+        <p className="muted">Removing app data deletes this device’s library.{capabilities.backups ? " Export a backup first." : " Backup export and import are not available yet on iPhone. Keep this installation to preserve your local library."}</p>
       </section>}
-      {capabilities.automaticLocation && <section>
-        <h2>Post locations</h2>
-        <label><input type="checkbox" checked={locationEnabled} onChange={e => {
-          const enabled = e.target.checked;
-          void run(async () => { const result = await bridge.setLocationEnabled({ enabled }); setLocationEnabled(result.enabled); if (enabled && !result.enabled) report("Location permission was not granted. Posts will save without location."); });
-        }} /> Automatically save location</label>
-        <p>Museamo asks for location permission on first opening. After you allow it, every new post tries to add a location automatically—you do not need to press the pin. Tap the pin to skip location for one post, or turn this setting off for all new posts. If services are off or unavailable, your post saves without a location. No background tracking.</p>
-        <p className="muted">Address lookup may send coordinates to your device’s geocoding service. Opening maps requests map tiles from OpenStreetMap. Saved locations sync only with devices you link.</p>
+      {selected === "preview" && isPreview && <section className="settings-page"><p>Temporary examples. No changes to installed apps or real devices.</p>
+        <div className="preview-tools">{[["Reset examples", () => preview.reset()], ["Empty library", () => preview.reset(true)], ["Large library", () => preview.stress()], ["Fail next save", () => { preview.failNext(); report("The next save will fail once."); }]].map(([label, action]) => <button className="secondary" key={String(label)} onClick={() => { (action as () => void)(); refresh(); }}>{String(label)}</button>)}</div>
+        <h3>Device scenarios</h3><div className="preview-tools">{(["empty", "linked", "unavailable", "incoming"] as const).map(scenario => <button className="secondary" key={scenario} onClick={() => { demo.scenario(scenario); void devices.refresh(); change("devices"); }}>{scenario === "empty" ? "No linked devices" : scenario === "linked" ? "Linked devices" : scenario === "incoming" ? "Incoming request" : "Discovery unavailable"}</button>)}</div>
       </section>}
-      {capabilities.widgets && <section>
-        <h2>Widgets</h2>
-        <p>
-          Add Museamo from your homescreen’s widget menu. Choose fixed tags or a
-          tag picker.
-        </p>
-        {library.profiles.map((p) => (
-          <button
-            key={p.id}
-            className="widget-setting"
-            onClick={() =>
-              void run(() => bridge.configureWidget({ profileId: p.id }))
-            }
-          >
-            <span className="widget-preview">
-              <PaperIcon name="plus" size={20} />
-              <strong>{p.label}</strong>
-              {p.mode === "picker" && <span className="widget-picker-preview"># <PaperIcon name="down" size={14} /></span>}
-            </span>
-            <span className="setting-detail">
-              {p.mode === "picker"
-                ? `Tag picker · ${library.tags.find((t) => t.id === p.selectedTagId)?.name || "No tag"}`
-                : `Fixed tags · ${
-                    p.tagIds
-                      .map((id) => library.tags.find((t) => t.id === id)?.name)
-                      .filter(Boolean)
-                      .join(", ") || "No tag"
-                  }`}
-              <PaperIcon name="next" size={18} />
-            </span>
-          </button>
-        ))}
-        {!library.profiles.length && (
-          <p className="muted">Your widgets will appear here.</p>
-        )}
-      </section>}
-      {capabilities.backups && <section>
-        <h2>Backup</h2>
-        <p>
-          Export a ZIP archive with your thoughts, Recovery, original photos/videos, tags, and widget settings. Older JSON backups can still be imported. Imports keep
-          conflicting content as separate copies.
-        </p>
-        <div className="action-row">
-          <button
-            className="secondary"
-            onClick={() =>
-              void run(async () => {
-                if (!(await bridge.exportBackup()).cancelled)
-                  report("Backup exported.");
-              })
-            }
-          >
-            <Download size={18} />
-            Export
-          </button>
-          <button
-            className="secondary"
-            onClick={() =>
-              void run(async () => {
-                if (!(await bridge.importBackup()).cancelled)
-                  report("Backup imported.");
-              })
-            }
-          >
-            <Upload size={18} />
-            Import
-          </button>
-        </div>
-      </section>}
-      <section>
-        <h2>About & storage</h2>
-        <p>Museamo · a place for your thoughts.</p>
-        <p className="muted">
-          {capabilities.media ? <>Original attachments stay in your local library and sync directly with devices you link. Linked media loads from its host when visible. No account or cloud sync. Removing app data deletes your library{capabilities.backups ? "; export a backup first." : "."}</> : "Your thoughts, tags, and drafts are saved on this device. Removing app data deletes your library."}
-        </p>
-        {!capabilities.backups && <p className="muted">iPhone supports photos, videos, manual location capture, shared hashtags, and linked devices while the app is open. Backup export and import are not available yet. Keep this installation to preserve your local library.</p>}
-      </section>
-      {isPreview && (
-        <section>
-          <h2>Preview tools</h2>
-          <p>Temporary examples, separate from your phone.</p>
-          <div className="preview-tools">
-            <button
-              className="secondary"
-              onClick={() => {
-                preview.reset();
-                refresh();
-              }}
-            >
-              Reset examples
-            </button>
-            <button
-              className="secondary"
-              onClick={() => {
-                preview.reset(true);
-                refresh();
-              }}
-            >
-              Empty library
-            </button>
-            <button
-              className="secondary"
-              onClick={() => {
-                preview.stress();
-                refresh();
-              }}
-            >
-              Large library
-            </button>
-            <button
-              className="secondary"
-              onClick={() => {
-                preview.failNext();
-                report("The next save will fail once.");
-              }}
-            >
-              Fail next save
-            </button>
-          </div>
-        </section>
-      )}
     </div>
-  );
+  </div>;
+}
+
+function LocationSettings() {
+  const settings = useSettingsResource(() => bridge.locationSettings());
+  const [message, setMessage] = useState("");
+  return <section className="settings-page">
+    <label className="setting-row setting-switch"><span className="setting-row-copy"><strong>Automatically save location</strong><span>Add a location to new thoughts. No background tracking.</span></span>
+      <input type="checkbox" role="switch" checked={settings.value?.enabled ?? false} disabled={!settings.value || settings.busy || !!settings.readError} onChange={event => {
+        const enabled = event.target.checked; setMessage("");
+        void settings.run(async () => { const result = await bridge.setLocationEnabled({ enabled }); if (enabled && !result.enabled) setMessage("Location permission was not granted. Thoughts will save without location."); });
+      }} /></label>
+    {!settings.value && !settings.readError && <p role="status">Loading location preference…</p>}
+    {settings.busy && <p role="status">Saving preference…</p>}
+    {settings.value && !settings.value.permitted && <p className="muted">Location permission is off. Enable automatic location to request permission.</p>}
+    {message && <p role="status">{message}</p>}
+    <SettingsFailure error={settings.actionError || settings.readError} retry={() => { if (settings.actionError) void settings.retryAction(); else void settings.refresh(); }} />
+    <details className="settings-help"><summary>How location works</summary><p>New thoughts try to add a location after permission is allowed. Tap the pin to skip it for one thought. Unavailable location never prevents saving.</p><p>Drafts keep their saved location. Location services and app permission are controlled by Android.</p></details>
+  </section>;
+}
+
+function DesktopSettings() {
+  const runtime = useDesktopRuntime();
+  const info = runtime.status === "ready" ? runtime.info : undefined;
+  const startup = useSettingsResource(() => bridge.getStartupSettings(), { enabled: !!info?.startupSupported });
+  return <section className="settings-page">
+    {runtime.status === "loading" && <p role="status">Loading desktop options…</p>}
+    {runtime.status === "error" && <p role="alert">Desktop options are unavailable. Use Retry desktop options above.</p>}
+    {info && <><h3>{desktopName(info)}</h3>{info.startupSupported ? <>
+      <label className="setting-row setting-switch startup-setting"><span className="setting-row-copy"><strong>Start Museamo when I sign in</strong><span>Keep linked devices available for sync.</span></span><input type="checkbox" role="switch" checked={startup.value?.enabled ?? false} disabled={!startup.value || startup.busy || !!startup.readError} onChange={event => { const enabled = event.target.checked; void startup.run(() => bridge.setStartupEnabled({ enabled })); }} /></label>
+      {!startup.value && !startup.readError && <p role="status">Checking sign-in settings…</p>}
+      {startup.busy && <p role="status">Saving sign-in preference…</p>}
+      <SettingsFailure error={startup.actionError} retry={() => void startup.retryAction()} />
+      {startup.readError && <div className="settings-error" role="alert"><p>Sign-in settings could not be loaded.</p><button className="text-button" onClick={() => void startup.refresh()}>Retry sign-in settings</button></div>}
+    </> : <p className="muted">Starting at sign-in is unavailable in this app session.</p>}
+      <SettingRow title={info.closeBehavior === "background" ? "Closing keeps Museamo running" : "Closing quits Museamo"} detail={info.closeBehavior === "background" ? "Your linked devices can continue syncing." : "Sync resumes when you reopen Museamo."} children={<span className="muted">Automatic</span>} />
+      <details className="settings-help"><summary>Closing and quitting</summary><p>{desktopCloseDescription(info)}</p></details>
+    </>}
+  </section>;
+}
+
+function BackupSettings({ refresh, report }: { refresh: () => void; report: (message: string) => void }) {
+  const [operation, setOperation] = useState<"export" | "import">();
+  const [message, setMessage] = useState(""), [error, setError] = useState("");
+  const pending = useRef(false);
+  async function perform(kind: "export" | "import") {
+    if (pending.current) return;
+    pending.current = true; setOperation(kind); setMessage(""); setError("");
+    try {
+      const result = await (kind === "export" ? bridge.exportBackup() : bridge.importBackup());
+      const next = result.cancelled ? "Cancelled. Your library has not changed." : kind === "export" ? "Backup exported." : "Backup imported.";
+      setMessage(next); if (!result.cancelled) { report(next); if (kind === "import") refresh(); }
+    } catch (failure) { setError(settingsError(failure)); }
+    finally { pending.current = false; setOperation(undefined); }
+  }
+  return <section className="settings-page"><p>Keep a portable copy of your saved library.</p>
+    <div className="backup-actions"><button className="primary" disabled={!!operation} onClick={() => void perform("export")}><Download size={18} />Export backup</button><button className="secondary" disabled={!!operation} onClick={() => void perform("import")}><Upload size={18} />Import backup</button></div>
+    <p className="muted">Exported ZIP files are not encrypted. Store them somewhere private.</p>
+    {operation && <p role="status">{operation === "export" ? "Exporting backup…" : "Importing backup…"}</p>}{message && <p role="status">{message}</p>}
+    <SettingsFailure error={error} />
+    <details className="settings-help"><summary>What’s included</summary><p>Saved thoughts, tags, original photos/videos, locations, Recovery, and widget settings. Drafts and device identity are excluded.</p><p>Older supported JSON and ZIP backups remain importable. Imports retain conflicting content as separate copies.</p></details>
+  </section>;
+}
+
+function WidgetSettings({ library }: { library: Library }) {
+  const [error, setError] = useState("");
+  return <section className="settings-page"><p>Add Museamo from your home screen’s widget menu.</p>
+    {library.profiles.map(profile => <SettingRow key={profile.id} title={profile.label} detail={profile.mode === "picker" ? `Tag picker · ${library.tags.find(tag => tag.id === profile.selectedTagId)?.name || "No tag"}` : `Fixed tags · ${profile.tagIds.map(id => library.tags.find(tag => tag.id === id)?.name).filter(Boolean).join(", ") || "No tag"}`} onClick={() => { setError(""); void bridge.configureWidget({ profileId: profile.id }).catch(failure => setError(settingsError(failure))); }} />)}
+    {!library.profiles.length && <p className="empty-state">Your widgets will appear here after you add one.</p>}
+    <SettingsFailure error={error} />
+  </section>;
 }

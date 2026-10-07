@@ -58,6 +58,12 @@ Parser references: [react-markdown](https://github.com/remarkjs/react-markdown),
 
 ## State and copy rules
 
+Settings prioritizes Manage tags and Recovery, followed by Linked devices and Backup, local device options, and About & privacy. Each topic has a focused page with short status rows and optional help. At desktop widths of 1100px and above, a settings topic column accompanies the content and Manage tags opens by default. Phone and narrow desktop navigation returns through the menu, then restores the originating library view. Platform capabilities determine which topics exist.
+
+Manage tags opens an editor from the tag name; a separate arrow opens the tagged thoughts. Name and Checklist are visible immediately. Sharing, invitations/members, and destructive confirmations have separate views. Closing dirty edits requires a save/discard/keep decision; entering Sharing saves edits first. Shared members and desktop shared-tag editors show read-only explanations and Done. Sharing consent names attachments, locations, editing permissions, and the private-library boundary before starting or joining.
+
+Device linking progresses through Find, Compare, and Combine. Nearby discovery is primary; manual addresses and network help are secondary. Show the complete matching code, identify the peer's library counts, and require native membership before reporting a completed link. Attachment downloads and pending removal propagation have their own status. Native read failures, action failures, and committed writes whose refresh failed remain distinct. Recovery renders compact, paged excerpts and opens full content only on selection.
+
 Use direct labels: Message yourself, Send, Add tag, Choose tag, Save widget, Backup. Avoid motivational headings and fake social vocabulary.
 
 Loading is announced; empty libraries and search misses are distinct. Errors stay beside the operation with retry; never imply a failed save succeeded. Motion explains a functional change: 120ms feedback, 160ms exits, 180ms entrances, and 200ms layout changes, with a smooth easing curve and 4–8px entrance/exit movement. No bounce, confetti, cascading delays, or decorative arrival effects. Initial loads and fetched search/navigation replacements do not animate as newly created thoughts. Page changes animate once their destination is ready; search uses a brief fade without replaying navigation movement.

@@ -26,12 +26,12 @@ import { Editor, TagEditor, Sheet } from "./components/Thoughts";
 
 import { Navigation, type Tab } from "./components/Navigation";
 import { Feed } from "./components/Feed";
-import { Settings } from "./components/Settings";
+import { Settings, settingsTitles, type SettingsSection } from "./components/Settings";
 import { SearchField, TagList } from "./components/LibraryViews";
 import { isPreview, isDesktop, capabilities, previewDesktopInfo, readNativeDesktopInfo, desktopShortcut, shortcutModifier, type DesktopRuntimeState } from "./platform";
 import type { DesktopInfo } from "./sync";
 import { hasNewThoughtsAhead } from "./feedRefresh";
-type View = { tab: Tab; tagId?: string; query: string; settings?: boolean; checklistOnly?: boolean };
+type View = { tab: Tab; tagId?: string; query: string; settings?: boolean; settingsSection?: SettingsSection; checklistOnly?: boolean };
 export default function App() {
   const [previewLayout, setPreviewLayout] = useState(() => isPreview && new URLSearchParams(window.location.search).get("previewLayout") === "desktop");
   const desktopLayout = isDesktop || previewLayout;
@@ -70,6 +70,9 @@ export default function App() {
     return () => { delete document.documentElement.dataset.previewTheme; };
   }, [previewTheme]);
   const [view, setView] = useState<View>({ tab: "stream", query: "" });
+  const settingsReturn = useRef<{ view: View; search: boolean } | undefined>(undefined);
+  const tagReturn = useRef<View | undefined>(undefined);
+  const [settingsTagQuery, setSettingsTagQuery] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]),
     [library, setLibrary] = useState<Library>({ tags: [], profiles: [] });
   const [loadedScope, setLoadedScope] = useState("");
@@ -111,8 +114,8 @@ export default function App() {
   const positions = useRef(new Map<string, number>()),
     cache = useRef(new Map<string, { entries: Entry[]; more: boolean }>());
   const key = (v: View) =>
-    `${v.settings ? "settings" : v.tab}/${v.tagId || ""}/${v.query}/${v.checklistOnly ? "todos" : "all"}`;
-  const tag = library.tags.find((t) => t.id === view.tagId);
+    `${v.settings ? `settings/${v.settingsSection || "home"}` : v.tab}/${v.tagId || ""}/${v.query}/${v.checklistOnly ? "todos" : "all"}`;
+  const tag = !view.settings ? library.tags.find((t) => t.id === view.tagId) : undefined;
   const modal = !!mapFocus || !!editing || !!draft || !!tagEditor;
   async function refreshLibrary() {
     setLibrary(await bridge.library());
@@ -166,7 +169,7 @@ export default function App() {
         ? previous || hasNewThoughtsAhead(previousEntries, page.entries)
         : false);
       cache.current.set(key(current), { entries: next, more: page.hasMore });
-      if (current.tagId && !lib.tags.some((t) => t.id === current.tagId))
+      if (!current.settings && current.tagId && !lib.tags.some((t) => t.id === current.tagId))
         setView({ tab: "tags", query: "" });
     } catch (e) {
       if (version.current === request) failure(e, () => void load(append, keepPosition, movedId, notifyNewThoughts, reason));
@@ -200,7 +203,7 @@ export default function App() {
     requestAnimationFrame(() =>
       window.scrollTo(0, positions.current.get(key(view)) || 0),
     );
-  }, [view.tab, view.tagId, view.query, view.settings, view.checklistOnly]);
+  }, [view.tab, view.tagId, view.query, view.settings, view.settingsSection, view.checklistOnly]);
   useEffect(() => {
     let disposed = false;
     let remove: (() => Promise<void>) | undefined;
@@ -265,14 +268,35 @@ export default function App() {
     setError("");
     setNewThoughts(false);
   }
+  function closeSettings() {
+    const previous = settingsReturn.current;
+    navigate(previous?.view ?? { tab: "stream", query: "" });
+    if (previous) setSearch(previous.search);
+    settingsReturn.current = undefined;
+  }
+  function openSettings() {
+    if (view.settings) { closeSettings(); return; }
+    setSettingsTagQuery("");
+    settingsReturn.current = { view: { ...view }, search };
+    navigate({ ...view, query: "", settings: true, settingsSection: "home" });
+  }
+  function backSettings() {
+    if (view.settingsSection && view.settingsSection !== "home") navigate({ ...view, settingsSection: "home" });
+    else closeSettings();
+  }
   useEffect(() => {
     const back = (event: Event) => {
       if (document.querySelector('[role="dialog"]')) return;
-      if (search) {
+      if (view.settings) {
+        event.preventDefault();
+        backSettings();
+      } else if (search) {
         event.preventDefault();
         setSearch(false);
         setView((v) => ({ ...v, query: "" }));
-      } else if (view.settings || view.tagId || view.tab !== "stream") {
+      } else if (view.tagId) {
+        event.preventDefault(); backFromTag();
+      } else if (view.tab !== "stream") {
         event.preventDefault();
         navigate({ tab: view.tagId ? "tags" : "stream", query: "" });
       }
@@ -281,7 +305,12 @@ export default function App() {
     return () => window.removeEventListener("museamoBack", back);
   }, [view, search]);
   function openTag(id: string) {
+    if (view.settings) tagReturn.current = { ...view };
     navigate({ tab: "tags", tagId: id, query: "" });
+  }
+  function backFromTag() {
+    const previous = tagReturn.current; tagReturn.current = undefined;
+    navigate(previous ?? { tab: "tags", query: "" });
   }
   async function mutate(action: () => Promise<unknown>, after?: () => void) {
     selfMutation.current++;
@@ -454,7 +483,7 @@ export default function App() {
                 className="icon-button"
                 aria-label="Back"
                 onClick={() =>
-                  navigate({ tab: view.tagId ? "tags" : view.tab, query: "", checklistOnly: view.checklistOnly })
+                  view.settings ? backSettings() : view.tagId ? backFromTag() : navigate({ tab: view.tab, query: "", checklistOnly: view.checklistOnly })
                 }
               >
                 <PaperIcon name="back" size={21} />
@@ -463,7 +492,7 @@ export default function App() {
             {view.settings && <PaperIcon name="gear" size={22} />}
             <h1 className={tag || desktopLayout ? "dynamic-title" : undefined} data-tauri-drag-region={desktopLayout ? true : undefined}>
               {view.settings
-                ? "Settings"
+                ? settingsTitles[view.settingsSection || "home"]
                 : tag
                   ? tagDisplayName(tag, library.tags)
                   : view.tab === "map" ? "Map" : view.tab === "gems"
@@ -488,7 +517,7 @@ export default function App() {
             {tag && (
               <button
                 className="icon-button"
-                aria-label="Edit this tag"
+                aria-label="Tag settings"
                 onClick={() => setTagEditor(tag)}
               >
                 <MoreHorizontal size={21} />
@@ -508,14 +537,12 @@ export default function App() {
                 <Search size={21} />
               </button>
             )}
-            {(!desktopLayout || view.settings) && <button
+            {!desktopLayout && !view.settings && <button
               className="icon-button"
-              aria-label={view.settings ? "Close settings" : "Settings"}
-              onClick={() =>
-                navigate({ tab: view.tab, query: "", settings: !view.settings, checklistOnly: view.checklistOnly })
-              }
+              aria-label="Settings"
+              onClick={openSettings}
             >
-              {view.settings ? <PaperIcon name="close" size={21} /> : <PaperIcon name="gear" size={21} />}
+              <PaperIcon name="gear" size={21} />
             </button>}
           </div>
         </header>
@@ -542,19 +569,18 @@ export default function App() {
               </div>
             </div>
           )}
-          <PageMotion view={`${view.settings ? "settings" : view.tab}/${view.tagId || ""}/${!!view.checklistOnly}`} searchKey={view.query}
+          <PageMotion view={`${view.settings ? `settings/${view.settingsSection || "home"}` : view.tab}/${view.tagId || ""}/${!!view.checklistOnly}`} searchKey={view.query}
             ready={!!view.settings || view.tab === "map" || (view.tab === "tags" && !view.tagId) || loadedScope === key(view)}>
           {view.settings ? (
             <Settings
               library={library}
               report={setNotice}
-              run={async (fn) => {
-                try {
-                  await mutate(fn);
-                } catch {
-                  /* visible */
-                }
-              }}
+              section={view.settingsSection || "home"}
+              onSectionChange={settingsSection => navigate({ ...view, settingsSection })}
+              editTag={setTagEditor}
+              openTag={openTag}
+              tagQuery={settingsTagQuery}
+              onTagQueryChange={setSettingsTagQuery}
               refresh={() => {
                 cache.current.clear();
                 void load();
@@ -605,8 +631,8 @@ export default function App() {
           settings={view.settings}
           tagName={tag?.name}
           compose={() => void compose()}
-          navigate={(tab) => navigate({ tab, query: "" })}
-          openSettings={() => navigate({ ...view, query: "", settings: !view.settings })}
+          navigate={(tab) => { tagReturn.current = undefined; navigate({ tab, query: "" }); }}
+          openSettings={openSettings}
         />
           <aside className="notifications" aria-label="Notifications">
             <MotionList scope="notifications" items={[

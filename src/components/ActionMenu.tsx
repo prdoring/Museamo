@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } fro
 import { createPortal } from "react-dom";
 import { useExiting } from "./Motion";
 
-export function ActionMenu({ anchor, close, children }: { anchor: RefObject<HTMLButtonElement | null>; close: () => void; children: ReactNode }) {
+export function ActionMenu({ anchor, close, children, label = "Thought actions" }: { anchor: RefObject<HTMLButtonElement | null>; close: () => void; children: ReactNode; label?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const exiting = useExiting();
   const [position, setPosition] = useState({ top: 60, left: 8 });
@@ -50,6 +50,6 @@ export function ActionMenu({ anchor, close, children }: { anchor: RefObject<HTML
       }
     };
   }, [anchor]);
-  return createPortal(<div ref={ref} className="action-menu" role="menu" aria-label="Thought actions" data-exiting={exiting}
+  return createPortal(<div ref={ref} className="action-menu" role="menu" aria-label={label} data-exiting={exiting}
     aria-hidden={exiting || undefined} inert={exiting} style={position}>{children}</div>, document.body);
 }

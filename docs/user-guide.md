@@ -18,7 +18,9 @@ If another linked device changes a thought while you are editing, a stale save k
 
 ## Checklist tags
 
-Choose **Checklist** in a tag's editor. Every thought with that tag gets a checkbox in Stream, Gems, and map cards. Checklist collections show unchecked thoughts first, newest first within each group. A thought with several Checklist tags has one shared checked state. Removing the last Checklist tag hides the checkbox but remembers completion for later.
+Open **Settings → Manage tags**, then choose a tag to edit its name or **Checklist** setting. Use the arrow beside a tag to open its thoughts. Tag settings are also available from the tag's menu in the library. Unsaved edits offer Save, Discard changes, or Keep editing when you close; opening Sharing offers Save and continue first.
+
+Every thought with a Checklist tag gets a checkbox in Stream, Gems, and map cards. Checklist collections show unchecked thoughts first, newest first within each group. A thought with several Checklist tags has one shared checked state. Removing the last Checklist tag hides the checkbox but remembers completion for later.
 
 The Stream header's checklist icon filters across all Checklist tags, including checked items. It works with search and pagination. Widgets and native pickers mark Checklist tags with a small checklist icon. New thoughts start unchecked.
 
@@ -42,9 +44,9 @@ Coordinates are saved before address lookup. Place names depend on the device's 
 
 ## Linking and shared hashtags
 
-For your own devices, use **Settings → Linked devices**. Compare the whole matching code and approve combining libraries on both devices. See [sync](offline-sync.md) for discovery, conflicts, and device removal. Drafts, widgets, permissions, and startup preferences remain local.
+For your own devices, use **Settings → Linked devices → Link a device**. Choose a nearby device, or use its local address if discovery is unavailable. Compare every group of the matching code, then review the other device's library and approve combining on both devices. A linked confirmation means membership was established; original attachments may still be transferring. See [sync](offline-sync.md) for discovery, conflicts, and device removal. Drafts, widgets, permissions, and startup preferences remain local.
 
-Android can also share an individual hashtag through a QR invitation. Both phones must be reachable on the same local network to join. Everyone who joins can add, edit, delete, and check off that collection's items. Its text, attachments, and saved locations are shared; other tags and Gems stay private. Review the confirmation before sharing. Shared collections also appear on your linked devices.
+Android and iPhone can also share an individual hashtag through **Tag settings → Sharing**. Review what is shared before creating a QR invitation. Each invitation is temporary and single use; cancelling it prevents future joins with that code. **Join shared hashtag** scans a code and shows a separate review before joining. Both phones must be reachable on the same local network to join. Everyone who joins can add, edit, delete, and check off that collection's items. Its text, attachments, and saved locations are shared; other tags and Gems stay private. Shared collections also appear on your linked devices. Members cannot rename the tag or change Checklist; desktop shared-tag settings explain which changes require your phone.
 
 ## Backup and Recovery
 
@@ -52,6 +54,8 @@ Android can also share an individual hashtag through a QR invitation. Both phone
 
 **Import** supports earlier JSON and ZIP backups. Current ZIP manifests use version 5; versions 1–4 remain importable. Older apps cannot read the newest exports. Large imports need space to stage and verify originals before changing the library.
 
-Deleted thoughts and earlier versions remain in **Recovery** until cleared. Restore creates a separate thought. Restores and permanent clearing sync to linked devices. Removing a device cannot remotely erase copies it already holds.
+Deleted thoughts and earlier versions remain in **Settings → Recovery** until cleared. Choose a short entry to view the complete version and restore a separate copy. **Show more** loads further entries in a large Recovery list. Permanent clearing requires a separate confirmation and syncs to linked devices. Removing a device cannot remotely erase copies it already holds.
+
+Settings groups organization first, then devices/backups, this device's options, and privacy information. Wide desktop windows keep the topic list beside the selected page; smaller windows and phones open one topic at a time. Back returns to the settings menu, then to your previous library view. iPhone does not expose backup, Android widget, automatic-location, or desktop startup controls. The browser's device examples are explicitly labeled as a demo and make no real connections.
 
 Export before updating, uninstalling, or clearing app storage. Android cloud/device-transfer backup is disabled for app data. Android uninstall or clearing storage deletes its library. Windows data lives separately in your user profile and can survive reinstalling the executable.
