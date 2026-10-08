@@ -2707,7 +2707,7 @@ dependencies = [
 
 [[package]]
 name = "museamo-desktop"
-version = "0.4.0"
+version = "0.4.5"
 dependencies = [
  "arboard",
  "dbus-secret-service",
@@ -2737,7 +2737,7 @@ dependencies = [
 
 [[package]]
 name = "museamo-sync-core"
-version = "0.4.0"
+version = "0.4.5"
 dependencies = [
  "hex",
  "if-addrs",
