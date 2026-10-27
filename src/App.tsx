@@ -262,7 +262,9 @@ export default function App() {
   }, []);
   function navigate(next: View) {
     positions.current.set(key(view), window.scrollY);
-    if (paginationValid.current) cache.current.set(key(view), { entries, more });
+    // Navigation can commit before the destination's cached rows do.
+    // Only save rows that have committed for the view we are leaving.
+    if (paginationValid.current && loadedScope === key(view)) cache.current.set(key(view), { entries, more });
     setView(next);
     setSearch(!!next.query);
     setError("");
